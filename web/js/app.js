@@ -1315,6 +1315,20 @@ document.addEventListener("focusin", (e) => {
 });
 document.addEventListener("pointerdown", () => { sound.unlock(); if (!state.booted) dismissBoot(); });
 
+// ======================================================================== no page scrolling
+// Only the lists (grid, settings, chips) may scroll. Anything else that gets
+// scrolled — e.g. by scrollIntoView while the window is still resizing — snaps back.
+const SCROLLABLE = ".grid-scroll, .settings-list, .chips, .osk-text";
+document.addEventListener("scroll", (e) => {
+  const el = e.target === document ? document.scrollingElement : e.target;
+  if (!el || (el.matches && el.matches(SCROLLABLE))) return;
+  if (el.scrollTop || el.scrollLeft) { el.scrollTop = 0; el.scrollLeft = 0; }
+}, true);
+window.addEventListener("resize", () => {
+  document.scrollingElement.scrollTop = 0;
+  document.scrollingElement.scrollLeft = 0;
+});
+
 // ======================================================================== boot
 const bootScene = new BootScene($("#boot-canvas"));
 bootScene.start();

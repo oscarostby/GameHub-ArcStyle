@@ -30,7 +30,10 @@ html {
   font-size: clamp(11px, 0.55vw + 5.5px, 26px);
   background: var(--bg-0);
 }
-html, body { height: 100%; margin: 0; overflow: hidden; }
+html, body { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
+/* The shell is a fixed console screen: the page itself must never scroll. */
+body { position: fixed; inset: 0; }
+#app, main, .view, .rail-wrap, .spotlight, #boot { overflow: clip; }
 body {
   font-family: var(--font-ui);
   color: var(--text);
