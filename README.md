@@ -1,6 +1,8 @@
 # GameHub ArcStyle
 
-A console-style game launcher for Linux. All your games are in one full-screen hub, and you can drive it with a controller, a keyboard or a mouse.
+A console-style game launcher app for Linux (Arch and Ubuntu), similar to Steam Big Picture but for *every* game on your PC. It collects Steam, Epic, GOG, Lutris and desktop games in one full-screen hub that you can drive with a controller, a keyboard or a mouse.
+
+GameHub runs as its own desktop app: a native GTK 4 window with the interface rendered by WebKitGTK (the same idea as Big Picture, which draws its UI with web tech internally). Controllers are read natively through libmanette, so no browser is involved.
 
 The home screen puts your games on a curved **arc rail**. The selected game's artwork fills the background. Its logo, stats and a big **Play** button sit underneath, similar to the home screen on a modern console.
 
@@ -44,34 +46,54 @@ The home screen puts your games on a curved **arc rail**. The selected game's ar
   - Turn each store scanner on or off, and show or hide hidden games.
 - **Top bar status**: clock, network, battery (on laptops and handhelds) and controller indicator.
 - **Synthesized UI sounds**, so no audio files are needed.
-- **No dependencies**: only the Python 3.10+ standard library and a browser engine you already have.
+- **Native desktop app**: full screen over everything, **Super+O** (Windows key + O) to open it or jump back to it, an app-menu entry and icon, F11 to toggle full screen and Ctrl+Q to quit. Only one copy ever runs. Packages are provided for Arch (PKGBUILD) and Ubuntu (.deb).
 
-## Getting started
+## Install
+
+### Quick install (Arch, CachyOS, Manjaro, Ubuntu 24.04+, Fedora)
 
 ```bash
 git clone https://github.com/oscarostby/GameHub-ArcStyle.git
 cd GameHub-ArcStyle
-./gamehub.py
-```
-
-GameHub starts a small local server and opens itself full screen in its own window. It uses Chromium, Chrome, Brave, Vivaldi or Edge in `--app` kiosk mode, or Firefox in kiosk mode with a separate profile. Closing the window stops the launcher.
-
-To add it to your app menu:
-
-```bash
-./install.sh              # menu entry
-./install.sh --autostart  # also start on login (nice for a couch/TV PC)
+./install.sh               # installs dependencies (asks for sudo) + app menu entry
+./install.sh --autostart   # same, and start GameHub on login (couch/TV PC)
 ./install.sh --uninstall
 ```
+
+Then press **Super+O** (Windows key + O), open **GameHub ArcStyle** from your app menu, or run `gamehub-arcstyle`. It opens full screen over everything. If it's already running, Super+O brings it straight back to the front.
+
+### As a system package
+
+**Arch / CachyOS:**
+
+```bash
+cd packaging/arch && makepkg -si
+```
+
+**Ubuntu 24.04+ / Debian 13+:**
+
+```bash
+packaging/debian/build-deb.sh
+sudo apt install ./gamehub-arcstyle_*_all.deb
+```
+
+### Dependencies
+
+| | Arch | Ubuntu |
+| --- | --- | --- |
+| GTK 4 + PyGObject | `gtk4 python-gobject` | `gir1.2-gtk-4.0 python3-gi` |
+| WebKitGTK 6.0 | `webkitgtk-6.0` | `gir1.2-webkit-6.0` |
+| Controllers | `libmanette` | `gir1.2-manette-0.2` |
 
 ### Command line options
 
 | Option | What it does |
 | --- | --- |
-| `--windowed` | Open in a normal window instead of full-screen kiosk mode |
+| `--windowed` | Start in a window instead of full screen (F11 toggles) |
 | `--demo` | Show a demo library (launching is simulated). Good for trying out the UI |
-| `--no-browser` | Only start the server, then open the printed URL yourself |
-| `--port N` | Port to listen on (default 47800, or a free one if it's busy) |
+| `--browser` | Fallback: show the UI in a browser window instead of the native app |
+| `--debug` | Enable the WebKit inspector (right click → Inspect) |
+| `--port N` | Internal port (default 47800, or a free one if it's busy) |
 
 ## Controls
 
@@ -95,11 +117,11 @@ Settings, favorites, play time and custom games are stored in `~/.local/share/ga
 
 ## Security
 
-The server only listens on `127.0.0.1`. Every API request has to carry a random token that is created each time GameHub starts and is only placed in the page it serves. Requests with a foreign `Host` header are rejected. This stops other websites open in your browser from launching anything.
+GameHub's window talks to a small built-in server that only listens on `127.0.0.1`. Every API request has to carry a random token that is created each time GameHub starts and is only placed in the page it serves. Requests with a foreign `Host` header are rejected. This stops other websites open in your browser from launching anything.
 
 ## Troubleshooting
 
-- **The controller does nothing:** browsers only expose gamepads after the first button press, so press any button on the boot screen. In Firefox, the window must have focus.
+- **The controller does nothing:** make sure `libmanette` (Arch) or `gir1.2-manette-0.2` (Ubuntu) is installed, and that the GameHub window has focus. Controller input is ignored while a game is in front.
 - **Missing artwork:** Steam art comes from the local cache first and falls back to the Steam CDN, so you need to be online for it. Games without art get a generated cover.
 - **A game isn't found:** open Settings and make sure that store's scanner is on, then choose *Rescan library*. You can always add it with *Add game*.
 
@@ -107,13 +129,15 @@ The server only listens on `127.0.0.1`. Every API request has to carry a random 
 
 ```bash
 python3 -m unittest discover -s tests -t .   # backend tests
-./gamehub.py --demo --windowed               # UI with demo data
+./gamehub.py --demo --windowed --debug       # UI with demo data and inspector
 ```
 
 Project layout:
 
 ```
 gamehub/        Python backend (scanners, launcher/process tracking, HTTP API, storage)
+  native.py     GTK 4 window, WebKit view and libmanette controller input
+packaging/      Arch PKGBUILD, Debian/Ubuntu .deb builder, desktop entry and icon
 web/            Front end (vanilla JS modules, no build step)
   js/input.js   gamepad + keyboard → actions (repeat, dead zones, controller detection)
   js/nav.js     spatial focus navigation

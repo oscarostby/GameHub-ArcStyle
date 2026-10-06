@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=GameHub ArcStyle
+GenericName=Game Launcher
+Comment=Console-style launcher for all the games on your PC
+Exec=gamehub-arcstyle
+Icon=gamehub-arcstyle
+Terminal=false
+Categories=Game;
+Keywords=games;launcher;steam;heroic;lutris;controller;big picture;
+StartupWMClass=io.github.oscarostby.GameHubArcStyle
+StartupNotify=true
+X-KDE-Shortcuts=Meta+O

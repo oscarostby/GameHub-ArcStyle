@@ -1,0 +1,23 @@
+# Maintainer: oscarostby
+# Build and install from the repository root with:
+#   cd packaging/arch && makepkg -si
+pkgname=gamehub-arcstyle
+pkgver=1.1.0
+pkgrel=1
+pkgdesc="Console-style launcher for all the games on your PC (Steam, Heroic, Lutris, desktop games)"
+arch=('any')
+url="https://github.com/oscarostby/GameHub-ArcStyle"
+license=('unknown')
+depends=('python' 'python-gobject' 'gtk4' 'webkitgtk-6.0' 'libmanette')
+optdepends=('steam: Steam games' 'heroic-games-launcher: Epic and GOG games' 'lutris: Lutris games')
+
+package() {
+  local src="$startdir/../.."
+  install -d "$pkgdir/usr/share/$pkgname"
+  cp -r "$src/gamehub" "$src/web" "$src/gamehub.py" "$pkgdir/usr/share/$pkgname/"
+  find "$pkgdir/usr/share/$pkgname" -name '__pycache__' -prune -exec rm -rf {} +
+  install -Dm755 "$src/packaging/gamehub-arcstyle.sh" "$pkgdir/usr/bin/gamehub-arcstyle"
+  install -Dm644 "$src/packaging/io.github.oscarostby.GameHubArcStyle.desktop" "$pkgdir/usr/share/applications/io.github.oscarostby.GameHubArcStyle.desktop"
+  install -Dm644 "$src/packaging/io.github.oscarostby.GameHubArcStyle.desktop" "$pkgdir/usr/share/kglobalaccel/io.github.oscarostby.GameHubArcStyle.desktop"
+  install -Dm644 "$src/packaging/gamehub-arcstyle.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/gamehub-arcstyle.svg"
+}
