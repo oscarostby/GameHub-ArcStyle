@@ -14,7 +14,7 @@ The home screen puts your games on a curved **arc rail**. The selected game's ar
   - **Lutris**: installed games, with cover art and banners.
   - **Desktop games**: any `.desktop` entry in the *Game* category, including Flatpaks.
   - **Custom games**: add anything that starts with a command, such as emulators, AppImages, scripts or itch.io games.
-- **Apps tab**: every other program in your app menu, with its icon, grouped into Internet, Media, Graphics, Office, Development, Utilities and System. Programs you use show up on the home rail next to your games.
+- **Apps tab**: every other program in your app menu, with its icon, grouped into Internet, Media, Graphics, Office, Development, Utilities and System.
 - **Steps aside while you play**: GameHub hides when a game or app starts and comes back by itself when it closes. You can turn this off in Settings.
 - **Controller first**
   - Works with Xbox, PlayStation and Nintendo-style controllers.

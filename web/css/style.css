@@ -83,6 +83,22 @@ body[data-bg="solid"] .bg-aurora { animation: none; background: var(--bg-1); }
 body[data-bg="solid"] .bg-layer,
 body[data-bg="aurora"] .bg-layer { display: none; }
 body.view-library .bg-layer, body.view-settings .bg-layer { opacity: 0.25; filter: blur(30px) saturate(1.3); }
+body.view-apps .bg-layer:not(.icon-bg) { opacity: 0.25; filter: blur(30px) saturate(1.3); }
+
+/* Programs have no artwork: build a backdrop from their icon (colour glow + large faint icon). */
+.bg-layer.icon-bg::before, .details-bg.icon-bg::before {
+  content: ""; position: absolute; inset: -25%;
+  background: var(--icon) 72% 45% / 85vh no-repeat;
+  filter: blur(90px) saturate(2.2); opacity: 0.85;
+}
+.bg-layer.icon-bg::after {
+  content: ""; position: absolute; right: 7vw; top: 46%; width: 46vh; height: 46vh;
+  transform: translateY(-50%) rotate(-8deg);
+  background: var(--icon) center / contain no-repeat;
+  opacity: 0.2; filter: drop-shadow(0 2rem 4rem rgba(0, 0, 0, 0.6));
+}
+body.view-apps .bg-layer.icon-bg::after { opacity: 0.12; }
+.launch-bg.icon-bg { background-size: 70vh; background-repeat: no-repeat; filter: blur(70px) brightness(0.6) saturate(2); }
 
 /* ------------------------------------------------------------------ boot */
 #boot {
@@ -400,7 +416,7 @@ h1 { font-family: var(--font-display); font-weight: 900; font-size: 2.6rem; marg
   grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; gap: 1rem;
   padding: 5rem 1rem; color: var(--text-2); text-align: center;
 }
-.empty svg { width: 3.5rem; height: 3.5rem; color: var(--text-3); }
+.empty > svg { width: 3.5rem; height: 3.5rem; color: var(--text-3); }
 .empty h2 { margin: 0; font-family: var(--font-display); }
 .empty .row { display: flex; gap: 1rem; margin-top: 0.6rem; }
 

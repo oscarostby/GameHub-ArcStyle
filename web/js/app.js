@@ -245,17 +245,34 @@ function toast(title, sub = "", { kind = "info", iconName = "info", time = 3600 
 
 // ======================================================================== background
 let bgFront = $("#bg-a"), bgBack = $("#bg-b"), bgUrl = null, bgTimer = 0;
+// Artwork for a full-screen background: the game's hero/cover art, or for
+// programs (and games without art) a glow built from their icon.
+async function backdrop(game) {
+  if (!game) return { url: null, icon: false };
+  const art = await firstImage(game.art.hero.length ? game.art.hero : game.art.cover);
+  if (art) return { url: art, icon: false };
+  const iconUrl = await firstImage(game.art.icon);
+  return { url: iconUrl, icon: !!iconUrl };
+}
+
+function paintBackdrop(el, { url, icon }) {
+  el.classList.toggle("icon-bg", icon);
+  el.style.setProperty("--icon", icon ? `url("${url}")` : "none");
+  el.style.backgroundImage = url && !icon ? `url("${url}")` : "";
+}
+
 function setBackground(game, delay = 160) {
   clearTimeout(bgTimer);
   bgTimer = setTimeout(async () => {
-    const url = game ? await firstImage(game.art.hero.length ? game.art.hero : game.art.cover) : null;
+    const bd = await backdrop(game);
+    const url = bd.url;
     if (url === bgUrl) return;
     bgUrl = url;
     if (!url) {
       bgFront.classList.remove("show");
       return;
     }
-    bgBack.style.backgroundImage = `url("${url}")`;
+    paintBackdrop(bgBack, bd);
     bgBack.classList.add("show");
     bgFront.classList.remove("show");
     [bgFront, bgBack] = [bgBack, bgFront];
@@ -455,8 +472,7 @@ $$(".tab").forEach((tab) => tab.addEventListener("click", () => showView(tab.dat
 
 // ---------------------------------------------------------------- home
 function homeOrder() {
-  const items = [...visibleGames(), ...visibleApps().filter((a) => a.lastPlayed || a.favorite)];
-  return items.sort((a, b) =>
+  return [...visibleGames()].sort((a, b) =>
     (state.running.has(b.id) - state.running.has(a.id)) ||
     (b.lastPlayed - a.lastPlayed) ||
     (b.favorite - a.favorite) ||
@@ -471,7 +487,7 @@ function renderHome({ keepId } = {}) {
 
   const tiles = games.map((g) => `
     <div class="tile" data-nav data-id="${escapeHtml(g.id)}">
-      ${isApp(g) ? appArtHtml(g) : artHtml(g)}
+      ${artHtml(g)}
       ${g.favorite ? `<span class="fav-badge">${icon("star")}</span>` : ""}
       ${state.running.has(g.id) ? `<span class="run-badge">RUNNING</span>` : ""}
       <div class="tile-label">${escapeHtml(g.title)}</div>
@@ -882,12 +898,14 @@ function openDetails(game, list = state.games) {
 function renderDetails(game) {
   detailsGame = game;
   const running = state.running.has(game.id);
-  firstImage(game.art.hero.length ? game.art.hero : game.art.cover).then((url) => {
+  backdrop(game).then((bd) => {
     if (detailsGame !== game) return;
-    const h = hash(game.title) % 360;
-    $("#details-bg").style.backgroundImage = url
-      ? `url("${url}")`
-      : `radial-gradient(60% 70% at 75% 45%, hsl(${h} 70% 40% / 0.45), transparent 70%), radial-gradient(50% 60% at 20% 80%, rgba(var(--accent-rgb), 0.18), transparent 70%)`;
+    const el = $("#details-bg");
+    paintBackdrop(el, bd);
+    if (!bd.url) {
+      const h = hash(game.title) % 360;
+      el.style.backgroundImage = `radial-gradient(60% 70% at 75% 45%, hsl(${h} 70% 40% / 0.45), transparent 70%), radial-gradient(50% 60% at 20% 80%, rgba(var(--accent-rgb), 0.18), transparent 70%)`;
+    }
   });
   const logo = $("#details-logo");
   logo.innerHTML = `<div class="spot-title">${escapeHtml(game.title)}</div>`;
@@ -1075,8 +1093,9 @@ async function launchGame(game) {
   const cover = $("#launch-cover");
   cover.innerHTML = app ? appArtHtml(game) : artHtml(game);
   hydrateArt(cover, game);
-  firstImage(game.art.hero.length ? game.art.hero : game.art.cover).then((url) => {
-    $("#launch-bg").style.backgroundImage = url ? `url("${url}")` : "none";
+  backdrop(game).then((bd) => {
+    $("#launch-bg").style.backgroundImage = bd.url ? `url("${bd.url}")` : "none";
+    $("#launch-bg").classList.toggle("icon-bg", bd.icon);
   });
   overlay.classList.add("show");
   sound.play(app ? "open" : "launch");
