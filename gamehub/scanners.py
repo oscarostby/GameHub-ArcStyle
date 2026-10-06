@@ -216,6 +216,127 @@ def _heroic_game(runner: str, app_name: str, title: str, meta: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Epic Games: Legendary (CLI) and the Epic Games Launcher running under Wine
+# (plain Wine, Lutris, Bottles or Heroic prefixes)
+# ---------------------------------------------------------------------------
+LEGENDARY_ROOTS = [HOME / ".config/legendary", HOME / ".var/app/io.github.derrod.legendary/config/legendary"]
+EPIC_MANIFESTS = "drive_c/ProgramData/Epic/EpicGamesLauncher/Data/Manifests"
+EPIC_LAUNCHER_EXES = [
+    "drive_c/Program Files (x86)/Epic Games/Launcher/Portal/Binaries/Win64/EpicGamesLauncher.exe",
+    "drive_c/Program Files (x86)/Epic Games/Launcher/Portal/Binaries/Win32/EpicGamesLauncher.exe",
+    "drive_c/Program Files/Epic Games/Launcher/Portal/Binaries/Win64/EpicGamesLauncher.exe",
+]
+
+
+def _wine_prefixes() -> list:
+    candidates = [HOME / ".wine"]
+    for parent in (HOME / "Games", HOME / "Games/Heroic/Prefixes", HOME / "Games/Heroic/Prefixes/default",
+                   HOME / ".local/share/bottles/bottles",
+                   HOME / ".var/app/com.usebottles.bottles/data/bottles/bottles",
+                   HOME / ".local/share/lutris/prefixes"):
+        if parent.is_dir():
+            candidates.extend(p for p in parent.iterdir() if p.is_dir())
+    return [p for p in candidates if (p / "drive_c").is_dir()]
+
+
+def _windows_to_unix(prefix: Path, win_path: str) -> Path:
+    drive, _, rest = win_path.replace("\\", "/").partition(":")
+    return prefix / f"drive_{drive.lower()}" / rest.lstrip("/")
+
+
+def scan_epic() -> list:
+    games = {}
+    for root in LEGENDARY_ROOTS:
+        installed = _read_json(root / "installed.json") or {}
+        for app_name, info in installed.items():
+            if not isinstance(info, dict) or info.get("is_dlc"):
+                continue
+            games[app_name] = {
+                "id": f"epic:{app_name}",
+                "title": info.get("title") or app_name,
+                "source": "epic",
+                "launch": {"type": "cmd", "argv": ["legendary", "launch", app_name]},
+                "art": {"cover": [], "hero": [], "logo": [], "icon": []},
+            }
+    for prefix in _wine_prefixes():
+        manifests = prefix / EPIC_MANIFESTS
+        if not manifests.is_dir():
+            continue
+        launcher = next((prefix / e for e in EPIC_LAUNCHER_EXES if (prefix / e).is_file()), None)
+        for item in manifests.glob("*.item"):
+            info = _read_json(item) or {}
+            app_name = info.get("AppName") or info.get("MainGameAppName")
+            if not app_name or app_name in games or info.get("bIsIncompleteInstall"):
+                continue
+            if info.get("bIsApplication") is False and "games" not in [c.lower() for c in info.get("AppCategories", ["games"])]:
+                continue
+            env = ["env", f"WINEPREFIX={prefix}", "wine"]
+            if launcher:
+                # Going through the launcher keeps Epic online services working.
+                argv = env + [str(launcher), f"com.epicgames.launcher://apps/{app_name}?action=launch&silent=true"]
+            else:
+                exe = _windows_to_unix(prefix, info.get("InstallLocation", "")) / info.get("LaunchExecutable", "")
+                argv = env + [str(exe)]
+            games[app_name] = {
+                "id": f"epic:{app_name}",
+                "title": info.get("DisplayName") or app_name,
+                "source": "epic",
+                "launch": {"type": "cmd", "argv": argv},
+                "art": {"cover": [], "hero": [], "logo": [], "icon": []},
+            }
+    return list(games.values())
+
+
+# ---------------------------------------------------------------------------
+# Minecraft mod launchers: every Prism Launcher / PolyMC / MultiMC instance
+# ---------------------------------------------------------------------------
+MOD_LAUNCHERS = [
+    # (data dir, command, flatpak id or None)
+    (HOME / ".local/share/PrismLauncher", "prismlauncher", None),
+    (HOME / ".var/app/org.prismlauncher.PrismLauncher/data/PrismLauncher", None, "org.prismlauncher.PrismLauncher"),
+    (HOME / ".local/share/PolyMC", "polymc", None),
+    (HOME / ".var/app/org.polymc.PolyMC/data/PolyMC", None, "org.polymc.PolyMC"),
+    (HOME / ".local/share/multimc", "multimc", None),
+]
+
+
+def _read_cfg(path: Path) -> dict:
+    values = {}
+    try:
+        for line in path.read_text(errors="ignore").splitlines():
+            key, sep, value = line.partition("=")
+            if sep:
+                values[key.strip()] = value.strip()
+    except OSError:
+        pass
+    return values
+
+
+def scan_modlaunchers() -> list:
+    games = []
+    for root, command, flatpak in MOD_LAUNCHERS:
+        instances = root / "instances"
+        if not instances.is_dir():
+            continue
+        base = ["flatpak", "run", flatpak] if flatpak else [command]
+        launcher_name = (flatpak or command).split(".")[-1]
+        for inst in sorted(instances.iterdir()):
+            cfg = _read_cfg(inst / "instance.cfg")
+            if not cfg:
+                continue
+            icon_key = cfg.get("iconKey", "")
+            icons = [str(p) for p in (root / "icons").glob(f"{icon_key}.*")] if icon_key else []
+            games.append({
+                "id": f"mod:{launcher_name}:{inst.name}",
+                "title": cfg.get("name") or inst.name,
+                "source": "mod",
+                "launch": {"type": "cmd", "argv": base + ["--launch", inst.name]},
+                "art": {"cover": [], "hero": [], "logo": [], "icon": icons},
+            })
+    return games
+
+
+# ---------------------------------------------------------------------------
 # Lutris
 # ---------------------------------------------------------------------------
 LUTRIS_ROOTS = [
@@ -337,7 +458,17 @@ def reset_icon_index():
     _icon_index = None
 
 
-LAUNCHER_APPS = re.compile(r"steam|lutris|heroic|gamehub|bottles|itch|minigalaxy", re.IGNORECASE)
+# Game stores and mod launchers. They're listed under Games (filter "Launchers"), not Apps.
+LAUNCHER_APPS = re.compile(
+    r"steam|lutris|heroic|legendary|epic.?games|bottles|\bitch|minigalaxy|prism.?launcher|polymc|multimc|"
+    r"modrinth|curseforge|gdlauncher|atlauncher|minecraft|r2modman|thunderstore|mod.?organizer|vortex|"
+    r"gog.?galaxy|ubisoft|battle.?net|rockstar.?games|amazon.?games|retroarch|pegasus",
+    re.IGNORECASE,
+)
+
+
+def _is_launcher(path, entry) -> bool:
+    return bool(LAUNCHER_APPS.search(path.stem) or LAUNCHER_APPS.search(entry.get("Name", "")))
 FIELD_CODE = re.compile(r"%[fFuUdDnNickvm]")
 
 
@@ -395,7 +526,9 @@ def scan_desktop() -> list:
         if "Game" not in entry.get("Categories", "").split(";"):
             continue
         # Games owned by Steam/Lutris/Heroic are picked up by their own scanners.
-        if re.search(r"steam://|lutris:|heroic://", entry.get("Exec", "")) or LAUNCHER_APPS.search(path.stem):
+        if re.search(r"steam://|lutris:|heroic://", entry.get("Exec", "")) or _is_launcher(path, entry):
+            continue
+        if "gamehub" in path.stem.lower():
             continue
         games.append({
             "id": f"desktop:{path.stem}",
@@ -428,20 +561,19 @@ def _app_category(categories: list) -> str:
 
 
 def scan_apps() -> list:
-    """Every other program in the app menu (browsers, chat, media, the game stores…)."""
+    """Every other program in the app menu (browsers, chat, media, tools…)."""
     apps = []
     for path, entry in _desktop_entries():
         categories = entry.get("Categories", "").split(";")
-        is_store = bool(LAUNCHER_APPS.search(path.stem)) and "gamehub" not in path.stem.lower()
-        if "gamehub" in path.stem.lower() or ("Game" in categories and not is_store):
-            continue  # games are listed with the games
+        if "gamehub" in path.stem.lower() or "Game" in categories or _is_launcher(path, entry):
+            continue  # games and game launchers are listed under Games
         if path.stem.startswith("kcm_") or "X-KDE-settings-module" in entry.get("Categories", ""):
             continue  # individual KDE settings pages
         apps.append({
             "id": f"app:{path.stem}",
             "title": entry.get("Name", path.stem),
             "source": "app",
-            "category": "Games" if is_store else _app_category(categories),
+            "category": _app_category(categories),
             "description": entry.get("Comment", "") or entry.get("GenericName", ""),
             "launch": _desktop_launch(path, entry),
             "art": {"cover": [], "hero": [], "logo": [], "icon": resolve_icon(entry.get("Icon", ""))},
@@ -449,59 +581,32 @@ def scan_apps() -> list:
     return apps
 
 
-# ---------------------------------------------------------------------------
-# Custom (user added) and demo games
-# ---------------------------------------------------------------------------
-def custom_to_game(entry: dict) -> dict:
-    return {
-        "id": entry["id"],
-        "title": entry["title"],
-        "source": "custom",
-        "launch": {"type": "cmd", "command": entry.get("command", "")},
-        "art": {
-            "cover": [entry["cover"]] if entry.get("cover") else [],
-            "hero": [entry["hero"]] if entry.get("hero") else ([entry["cover"]] if entry.get("cover") else []),
-            "logo": [],
-            "icon": [],
-        },
-        "command": entry.get("command", ""),
-    }
-
-
-DEMO_STEAM = [
-    ("1091500", "Cyberpunk 2077"), ("1245620", "ELDEN RING"), ("1086940", "Baldur's Gate 3"),
-    ("292030", "The Witcher 3: Wild Hunt"), ("1174180", "Red Dead Redemption 2"), ("730", "Counter-Strike 2"),
-    ("413150", "Stardew Valley"), ("367520", "Hollow Knight"), ("1145360", "Hades"),
-    ("105600", "Terraria"), ("814380", "Sekiro: Shadows Die Twice"), ("620", "Portal 2"),
-    ("1817070", "Marvel's Spider-Man Remastered"), ("990080", "Hogwarts Legacy"),
-]
-
-
-def demo_games() -> list:
-    games = []
-    for appid, title in DEMO_STEAM:
-        games.append({
-            "id": f"steam:{appid}",
-            "title": title,
-            "source": "steam",
-            "launch": {"type": "demo"},
-            "art": {
-                "cover": [STEAM_CDN.format(appid=appid, name="library_600x900.jpg"),
-                          STEAM_CDN_ALT.format(appid=appid, name="library_600x900.jpg")],
-                "hero": [STEAM_CDN.format(appid=appid, name="library_hero.jpg"),
-                         STEAM_CDN_ALT.format(appid=appid, name="library_hero.jpg")],
-                "logo": [STEAM_CDN.format(appid=appid, name="logo.png"),
-                         STEAM_CDN_ALT.format(appid=appid, name="logo.png")],
-                "icon": [],
-            },
+def scan_launchers() -> list:
+    """Game stores and mod launchers themselves (Steam, Heroic, Prism Launcher…)."""
+    launchers = []
+    for path, entry in _desktop_entries():
+        if "gamehub" in path.stem.lower() or not _is_launcher(path, entry):
+            continue
+        if re.search(r"steam://|lutris:|heroic://", entry.get("Exec", "")):
+            continue  # a single game created by a store, not the store itself
+        launchers.append({
+            "id": f"launcher:{path.stem}",
+            "title": entry.get("Name", path.stem),
+            "source": "launcher",
+            "description": entry.get("Comment", "") or entry.get("GenericName", ""),
+            "launch": _desktop_launch(path, entry),
+            "art": {"cover": [], "hero": [], "logo": [], "icon": resolve_icon(entry.get("Icon", ""))},
         })
-    return games
+    return launchers
 
 
 SCANNERS = {
     "steam": scan_steam,
     "heroic": scan_heroic,
+    "epic": scan_epic,
     "lutris": scan_lutris,
+    "mods": scan_modlaunchers,
+    "launchers": scan_launchers,
     "desktop": scan_desktop,
     "apps": scan_apps,
 }

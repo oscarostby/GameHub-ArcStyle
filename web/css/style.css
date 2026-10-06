@@ -88,16 +88,23 @@ body.view-apps .bg-layer:not(.icon-bg) { opacity: 0.25; filter: blur(30px) satur
 /* Programs have no artwork: build a backdrop from their icon (colour glow + large faint icon). */
 .bg-layer.icon-bg::before, .details-bg.icon-bg::before {
   content: ""; position: absolute; inset: -25%;
-  background: var(--icon) 72% 45% / 85vh no-repeat;
-  filter: blur(90px) saturate(2.2); opacity: 0.85;
+  background: var(--icon) 70% 45% / 110vh no-repeat;
+  filter: blur(70px) saturate(2.4) brightness(1.15); opacity: 1;
 }
 .bg-layer.icon-bg::after {
   content: ""; position: absolute; right: 7vw; top: 46%; width: 46vh; height: 46vh;
   transform: translateY(-50%) rotate(-8deg);
   background: var(--icon) center / contain no-repeat;
-  opacity: 0.2; filter: drop-shadow(0 2rem 4rem rgba(0, 0, 0, 0.6));
+  opacity: 0.32; filter: drop-shadow(0 2rem 4rem rgba(0, 0, 0, 0.6));
+  animation: iconFloat 9s ease-in-out infinite alternate;
 }
-body.view-apps .bg-layer.icon-bg::after { opacity: 0.12; }
+@keyframes iconFloat { to { transform: translateY(-53%) rotate(-4deg) scale(1.04); } }
+body.view-apps .bg-layer.icon-bg::after { opacity: 0.22; }
+body.view-apps .bg-shade {
+  background:
+    linear-gradient(90deg, rgba(5, 7, 13, 0.82) 0%, rgba(5, 7, 13, 0.45) 55%, rgba(5, 7, 13, 0.1) 85%),
+    linear-gradient(0deg, rgba(5, 7, 13, 0.9) 0%, rgba(5, 7, 13, 0.3) 45%, rgba(5, 7, 13, 0.5) 100%);
+}
 .launch-bg.icon-bg { background-size: 70vh; background-repeat: no-repeat; filter: blur(70px) brightness(0.6) saturate(2); }
 
 /* ------------------------------------------------------------------ boot */
@@ -193,16 +200,12 @@ main { position: relative; min-height: 0; }
 .clock { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
 #clock-time { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; color: var(--text); }
 #clock-date { font-size: 0.75rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.1em; }
-.avatar {
-  width: 2.8rem; height: 2.8rem; border-radius: 50%;
-  display: grid; place-items: center;
-  font-family: var(--font-display); font-weight: 800; font-size: 1.2rem; color: #fff;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
-  transition: transform 0.2s var(--ease-out-back), box-shadow 0.2s;
+.power-btn {
+  width: 2.6rem; height: 2.6rem; border-radius: 50%; display: grid; place-items: center; color: var(--text-2);
+  background: rgba(255, 255, 255, 0.08); transition: transform 0.2s var(--ease-out-back), box-shadow 0.2s, color 0.2s;
 }
-.avatar.big { width: 3.6rem; height: 3.6rem; font-size: 1.6rem; }
-.avatar.focused, .avatar:hover { transform: scale(1.12); box-shadow: 0 0 0 3px var(--text), 0 0 1.6rem rgba(var(--accent-rgb), 0.7); }
+.power-btn svg { width: 1.2rem; height: 1.2rem; }
+.power-btn.focused, .power-btn:hover { color: var(--text); transform: scale(1.1); box-shadow: 0 0 0 0.18rem var(--text), 0 0 1.6rem rgba(var(--accent-rgb), 0.6); }
 
 /* ------------------------------------------------------------------ focus ring */
 [data-nav] { outline: none; }
@@ -526,7 +529,6 @@ h1 { font-family: var(--font-display); font-weight: 900; font-size: 2.6rem; marg
 #power.open .power-panel { transform: none; }
 .power-head { display: flex; align-items: center; gap: 1rem; padding: 0 0.6rem 1.2rem; border-bottom: 1px solid var(--line); }
 .power-name { font-family: var(--font-display); font-weight: 800; font-size: 1.4rem; }
-.power-host { color: var(--text-3); font-size: 0.9rem; }
 .power-list { display: flex; flex-direction: column; gap: 0.4rem; }
 .power-sep { height: 1px; background: var(--line); margin: 0.6rem 0.4rem; }
 .power-item {

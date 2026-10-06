@@ -22,9 +22,9 @@ DEFAULT_SETTINGS = {
     "rumble": True,
     "clock24": True,
     "showHidden": False,
-    "profileName": os.environ.get("USER", "Player").capitalize(),
     "hideOnLaunch": True,
-    "sources": {"steam": True, "heroic": True, "lutris": True, "desktop": True, "apps": True},
+    "sources": {"steam": True, "heroic": True, "epic": True, "lutris": True, "mods": True,
+                "launchers": True, "desktop": True, "apps": True},
 }
 
 

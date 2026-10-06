@@ -35,7 +35,7 @@ const playLabel = (g) => (isApp(g) ? "Open" : "Play");
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const appEl = $("#app");
-const SOURCES = { steam: "Steam", heroic: "Heroic", lutris: "Lutris", desktop: "Desktop", custom: "Custom", app: "App" };
+const SOURCES = { steam: "Steam", epic: "Epic Games", heroic: "Heroic", lutris: "Lutris", mod: "Mods", desktop: "Desktop", custom: "Custom", launcher: "Launchers", app: "App" };
 const APP_CATEGORY_ORDER = ["Games", "Internet", "Media", "Graphics", "Office", "Development", "Utilities", "System", "Other"];
 const SORTS = [
   { id: "az", label: "A–Z" },
@@ -289,11 +289,6 @@ function applySettings() {
   document.body.dataset.bg = s.background;
   sound.enabled = !!s.sounds;
   sound.volume = Number(s.volume);
-  const letter = (s.profileName || state.user || "P").trim().charAt(0).toUpperCase() || "P";
-  $("#avatar-letter").textContent = letter;
-  $("#power-letter").textContent = letter;
-  $("#power-name").textContent = s.profileName || state.user;
-  $("#power-host").textContent = state.hostname;
   updateClock();
 }
 
@@ -474,6 +469,7 @@ $$(".tab").forEach((tab) => tab.addEventListener("click", () => showView(tab.dat
 function homeOrder() {
   return [...visibleGames()].sort((a, b) =>
     (state.running.has(b.id) - state.running.has(a.id)) ||
+    ((a.source === "launcher") - (b.source === "launcher")) || // launchers after the games
     (b.lastPlayed - a.lastPlayed) ||
     (b.favorite - a.favorite) ||
     a.title.localeCompare(b.title));
@@ -553,7 +549,7 @@ function updateSpotlight() {
   if (!game) {
     const special = tile?.dataset.special;
     const empty = !state.games.length;
-    logo.innerHTML = `<div class="spot-title">${empty ? `Welcome, ${escapeHtml(state.settings.profileName || state.user)}` : special === "library" ? "Game Library" : special === "rescan" ? "Rescan library" : "Add a game"}</div>`;
+    logo.innerHTML = `<div class="spot-title">${empty ? "Welcome to GameHub" : special === "library" ? "Game Library" : special === "rescan" ? "Rescan library" : "Add a game"}</div>`;
     meta.innerHTML = empty
       ? `<p class="empty-hero">No games were found yet. GameHub looks for Steam, Heroic (Epic &amp; GOG), Lutris and desktop games automatically — or add any game by its launch command.</p>`
       : special === "library"
@@ -804,8 +800,6 @@ function renderSettings() {
         `<button class="swatch ${c === s.accent ? "active" : ""}" data-nav data-accent="${c}" style="--c:${c}" aria-label="Accent ${c}"></button>`).join("")}</div>`,
       settingRow({ id: "background", label: "Background", desc: "What fills the screen behind your games", type: "cycle", value: cycleHtml(BACKGROUNDS.find(([k]) => k === s.background)?.[1] || s.background) }),
       settingRow({ id: "clock24", label: "24-hour clock", type: "toggle", value: toggleHtml(s.clock24) }),
-      `<label class="setting" data-nav data-setting="profileName"><div><div class="label">Profile name</div><div class="desc">Shown on the home screen and in the menu</div></div>
-        <div class="value"><input id="profile-input" type="text" maxlength="24" aria-label="Profile name" value="${escapeHtml(s.profileName)}"></div></label>`,
     ]],
     ["Sound & feedback", [
       settingRow({ id: "sounds", label: "Interface sounds", type: "toggle", value: toggleHtml(s.sounds) }),
@@ -813,7 +807,7 @@ function renderSettings() {
       settingRow({ id: "rumble", label: "Controller vibration", desc: "Rumble when launching games", type: "toggle", value: toggleHtml(s.rumble) }),
     ]],
     ["Library", [
-      ...Object.entries({ steam: "Steam", heroic: "Heroic (Epic, GOG)", lutris: "Lutris", desktop: "Desktop games (.desktop)" }).map(([k, label]) =>
+      ...Object.entries({ steam: "Steam", epic: "Epic Games (Legendary / Wine)", heroic: "Heroic (Epic, GOG)", lutris: "Lutris", mods: "Minecraft mod launchers (Prism, PolyMC, MultiMC)", launchers: "Game launchers (Steam, Epic, Prism…)", desktop: "Desktop games (.desktop)" }).map(([k, label]) =>
         settingRow({ id: `src-${k}`, label: `Scan ${label}`, type: "toggle", value: toggleHtml(s.sources[k]), help: `Include games installed through ${label}.` })),
       settingRow({ id: "src-apps", label: "Show apps", desc: "All programs from your app menu, in the Apps tab", type: "toggle", value: toggleHtml(s.sources.apps), help: "List every program on your PC (browsers, chat, media, the game stores) in the Apps tab." }),
       settingRow({ id: "showHidden", label: "Show hidden games", desc: "Hidden games are always listed under the Hidden filter", type: "toggle", value: toggleHtml(s.showHidden) }),
@@ -833,9 +827,6 @@ function renderSettings() {
     const el = $(`#settings-list [data-setting="${focused}"]`) || $(`#settings-list [data-accent="${focused}"]`);
     if (el) nav.focus(el, { silent: true, scroll: false });
   }
-  const profile = $("#profile-input");
-  profile.addEventListener("change", () => saveSetting("profileName", profile.value.trim() || state.user, { render: false }));
-  profile.addEventListener("keydown", (e) => { if (e.key === "Enter") profile.blur(); });
 }
 
 $("#settings-list").addEventListener("navfocus", (e) => {
@@ -850,7 +841,6 @@ $("#settings-list").addEventListener("click", (e) => {
   if (!row) return;
   const id = row.dataset.setting;
   const s = state.settings;
-  if (id === "profileName") { if (e.target.tagName !== "INPUT") editField(row); return; }
   sound.play("toggle");
   switch (id) {
     case "clock24": case "sounds": case "rumble": case "showHidden": case "hideOnLaunch":
@@ -1015,7 +1005,7 @@ $("#power").addEventListener("click", async (e) => {
     }
   }
 });
-$("#avatar-btn").addEventListener("click", openPower);
+$("#power-btn").addEventListener("click", openPower);
 
 async function quitApp() {
   if (!(await confirmDialog("Quit GameHub?", "Your games keep running. Start GameHub again from your app menu.", "Quit"))) return;
@@ -1222,7 +1212,7 @@ function handleAction(action, info = {}) {
 
     case "accept":
       if (!current) return true;
-      if (current.matches(".search, .field, [data-setting='profileName']")) {
+      if (current.matches(".search, .field")) {
         sound.play("select");
         return editField(current);
       }

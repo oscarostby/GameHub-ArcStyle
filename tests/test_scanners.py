@@ -69,5 +69,54 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(store.custom_games(), [])
 
 
+class LauncherAndEpicTests(unittest.TestCase):
+    def _write(self, apps, name, body):
+        (apps / name).write_text("[Desktop Entry]\nType=Application\n" + body)
+
+    def test_launchers_go_to_games_not_apps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            apps = Path(tmp) / "applications"
+            apps.mkdir()
+            self._write(apps, "steam.desktop", "Name=Steam\nExec=steam %U\nCategories=Network;FileTransfer;Game;\n")
+            self._write(apps, "org.prismlauncher.PrismLauncher.desktop", "Name=Prism Launcher\nExec=prismlauncher\nCategories=Game;\n")
+            self._write(apps, "firefox.desktop", "Name=Firefox\nExec=firefox %u\nCategories=Network;WebBrowser;\n")
+            self._write(apps, "glitch.desktop", "Name=Switcheroo\nExec=switcheroo\nCategories=Utility;\n")
+            with mock.patch.object(scanners, "_xdg_app_dirs", lambda: [apps]):
+                launchers = sorted(g["title"] for g in scanners.scan_launchers())
+                app_titles = sorted(a["title"] for a in scanners.scan_apps())
+                games = scanners.scan_desktop()
+        self.assertEqual(launchers, ["Prism Launcher", "Steam"])
+        self.assertEqual(app_titles, ["Firefox", "Switcheroo"])
+        self.assertEqual(games, [])
+
+    def test_epic_games_in_wine_prefix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / ".wine"
+            manifests = prefix / scanners.EPIC_MANIFESTS
+            manifests.mkdir(parents=True)
+            (manifests / "a.item").write_text(json.dumps({
+                "AppName": "Fortnite", "DisplayName": "Fortnite",
+                "InstallLocation": "C:\\Program Files\\Epic Games\\Fortnite", "LaunchExecutable": "Fortnite.exe",
+            }))
+            with mock.patch.object(scanners, "HOME", Path(tmp)), \
+                 mock.patch.object(scanners, "LEGENDARY_ROOTS", []):
+                games = scanners.scan_epic()
+        self.assertEqual([g["title"] for g in games], ["Fortnite"])
+        argv = games[0]["launch"]["argv"]
+        self.assertIn(f"WINEPREFIX={prefix}", argv)
+        self.assertTrue(argv[-1].endswith("drive_c/Program Files/Epic Games/Fortnite/Fortnite.exe"))
+
+    def test_prism_instances(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "PrismLauncher"
+            inst = root / "instances" / "fabric-1.21"
+            inst.mkdir(parents=True)
+            (inst / "instance.cfg").write_text("[General]\nname=Fabric 1.21 Modpack\niconKey=default\n")
+            with mock.patch.object(scanners, "MOD_LAUNCHERS", [(root, "prismlauncher", None)]):
+                games = scanners.scan_modlaunchers()
+        self.assertEqual(games[0]["title"], "Fabric 1.21 Modpack")
+        self.assertEqual(games[0]["launch"]["argv"], ["prismlauncher", "--launch", "fabric-1.21"])
+
+
 if __name__ == "__main__":
     unittest.main()
