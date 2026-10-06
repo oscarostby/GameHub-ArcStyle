@@ -600,6 +600,55 @@ def scan_launchers() -> list:
     return launchers
 
 
+# ---------------------------------------------------------------------------
+# Custom (user added) and demo games
+# ---------------------------------------------------------------------------
+def custom_to_game(entry: dict) -> dict:
+    return {
+        "id": entry["id"],
+        "title": entry["title"],
+        "source": "custom",
+        "launch": {"type": "cmd", "command": entry.get("command", "")},
+        "art": {
+            "cover": [entry["cover"]] if entry.get("cover") else [],
+            "hero": [entry["hero"]] if entry.get("hero") else ([entry["cover"]] if entry.get("cover") else []),
+            "logo": [],
+            "icon": [],
+        },
+        "command": entry.get("command", ""),
+    }
+
+
+DEMO_STEAM = [
+    ("1091500", "Cyberpunk 2077"), ("1245620", "ELDEN RING"), ("1086940", "Baldur's Gate 3"),
+    ("292030", "The Witcher 3: Wild Hunt"), ("1174180", "Red Dead Redemption 2"), ("730", "Counter-Strike 2"),
+    ("413150", "Stardew Valley"), ("367520", "Hollow Knight"), ("1145360", "Hades"),
+    ("105600", "Terraria"), ("814380", "Sekiro: Shadows Die Twice"), ("620", "Portal 2"),
+    ("1817070", "Marvel's Spider-Man Remastered"), ("990080", "Hogwarts Legacy"),
+]
+
+
+def demo_games() -> list:
+    games = []
+    for appid, title in DEMO_STEAM:
+        games.append({
+            "id": f"steam:{appid}",
+            "title": title,
+            "source": "steam",
+            "launch": {"type": "demo"},
+            "art": {
+                "cover": [STEAM_CDN.format(appid=appid, name="library_600x900.jpg"),
+                          STEAM_CDN_ALT.format(appid=appid, name="library_600x900.jpg")],
+                "hero": [STEAM_CDN.format(appid=appid, name="library_hero.jpg"),
+                         STEAM_CDN_ALT.format(appid=appid, name="library_hero.jpg")],
+                "logo": [STEAM_CDN.format(appid=appid, name="logo.png"),
+                         STEAM_CDN_ALT.format(appid=appid, name="logo.png")],
+                "icon": [],
+            },
+        })
+    return games
+
+
 SCANNERS = {
     "steam": scan_steam,
     "heroic": scan_heroic,

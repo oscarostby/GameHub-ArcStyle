@@ -3,6 +3,7 @@ import { input } from "./input.js";
 import { nav } from "./nav.js";
 import { sound } from "./sound.js";
 import { OnScreenKeyboard } from "./osk.js";
+import { BootScene } from "./boot.js";
 
 // ======================================================================== state
 const state = {
@@ -290,6 +291,7 @@ function applySettings() {
   sound.enabled = !!s.sounds;
   sound.volume = Number(s.volume);
   updateClock();
+  bootScene.colors();
 }
 
 let settingsSaveTimer = 0;
@@ -1314,13 +1316,20 @@ document.addEventListener("focusin", (e) => {
 document.addEventListener("pointerdown", () => { sound.unlock(); if (!state.booted) dismissBoot(); });
 
 // ======================================================================== boot
+const bootScene = new BootScene($("#boot-canvas"));
+bootScene.start();
+
 function dismissBoot() {
   if (state.booted) return;
   state.booted = true;
   sound.unlock();
   sound.play("boot");
-  $("#boot").classList.add("done");
-  document.body.classList.add("ready");
+  $("#boot").classList.add("warping");
+  bootScene.warpOut(850).then(() => {
+    $("#boot").classList.add("done");
+    document.body.classList.add("ready");
+    setTimeout(() => bootScene.stop(), 700);
+  });
   showView("home", { focus: true });
   if (state.demo) setTimeout(() => toast("Demo library", "Started with --demo. Launching is simulated.", { iconName: "gamepad" }), 900);
 }
@@ -1339,7 +1348,6 @@ async function init() {
   pollStatus();
   setInterval(pollStatus, 4000);
   // Pressing any controller button or key dismisses the splash; auto-continue after a moment.
-  setTimeout(() => !state.booted && $(".boot-press-text") && ($(".boot-press-text").textContent = "Press any button to start"), 1800);
 }
 
 init();

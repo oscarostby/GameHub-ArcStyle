@@ -54,15 +54,16 @@
 
   <!-- Boot splash -->
   <div id="boot">
-    <div class="boot-logo">
-      <svg class="boot-arc" viewBox="0 0 200 200" aria-hidden="true">
-        <circle cx="100" cy="100" r="80" class="arc-track"/>
-        <circle cx="100" cy="100" r="80" class="arc-fill"/>
-      </svg>
-      <div class="boot-word">GAME<b>HUB</b></div>
-      <div class="boot-sub">ARC STYLE</div>
+    <canvas id="boot-canvas" aria-hidden="true"></canvas>
+    <div class="boot-title">
+      <div class="boot-word"><span>GAME</span><b>HUB</b></div>
+      <div class="boot-sub"><i></i>ARC STYLE<i></i></div>
     </div>
-    <div class="boot-press"><span class="boot-press-text">Press any button</span></div>
+    <div class="boot-press">
+      <span class="boot-press-glyph" data-glyph="accept"></span>
+      <span class="boot-press-text">Press any button</span>
+    </div>
+    <div class="boot-foot">Super+O shows or hides GameHub anytime</div>
   </div>
 
   <div id="app">

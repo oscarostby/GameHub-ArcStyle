@@ -109,35 +109,57 @@ body.view-apps .bg-shade {
 
 /* ------------------------------------------------------------------ boot */
 #boot {
-  position: fixed; inset: 0; z-index: 100;
-  display: grid; place-items: center;
-  background: radial-gradient(60% 60% at 50% 45%, #0e1630, var(--bg-0));
-  transition: opacity 0.7s var(--ease), visibility 0.7s;
+  position: fixed; inset: 0; z-index: 100; overflow: hidden;
+  background: #03040b;
+  transition: opacity 0.6s var(--ease), visibility 0.6s;
 }
 #boot.done { opacity: 0; visibility: hidden; }
-.boot-logo { position: relative; display: grid; place-items: center; width: 26rem; height: 26rem; }
-.boot-arc { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
-.boot-arc circle { fill: none; stroke-width: 3; }
-.arc-track { stroke: rgba(255, 255, 255, 0.06); }
-.arc-fill {
-  stroke: var(--accent); stroke-linecap: round;
-  stroke-dasharray: 503; stroke-dashoffset: 503;
-  filter: drop-shadow(0 0 8px var(--accent));
-  animation: arcfill 1.6s var(--ease) 0.2s forwards;
+#boot-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.boot-title {
+  position: absolute; left: 0; right: 0; top: 13vh; text-align: center;
+  animation: bootIn 1.4s var(--ease) both;
 }
-@keyframes arcfill { to { stroke-dashoffset: 125; } }
 .boot-word {
-  font-family: var(--font-display); font-weight: 900; font-size: 3.1rem; letter-spacing: 0.06em;
-  animation: rise 1s var(--ease) both;
+  font-family: var(--font-display); font-weight: 900; font-size: clamp(3rem, 9vh, 6.5rem);
+  letter-spacing: 0.08em; line-height: 1; color: #fff;
+  text-shadow: 0 0 2rem rgba(var(--accent-rgb), 0.55), 0 0.4rem 2.4rem rgba(0, 0, 0, 0.6);
 }
-.boot-word b { color: var(--accent); text-shadow: 0 0 1.4rem rgba(var(--accent-rgb), 0.6); }
+.boot-word b {
+  background: linear-gradient(180deg, #fff 0%, var(--accent) 55%, var(--accent-2) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 1.2rem rgba(var(--accent-rgb), 0.7));
+}
 .boot-sub {
-  position: absolute; top: 62%; font-family: var(--font-display); letter-spacing: 0.7em; font-size: 0.9rem;
-  color: var(--text-3); animation: rise 1s var(--ease) 0.3s both;
+  display: flex; align-items: center; justify-content: center; gap: 1.2rem; margin-top: 1.2rem;
+  font-family: var(--font-display); font-weight: 700; letter-spacing: 0.75em; font-size: clamp(0.8rem, 1.6vh, 1.1rem);
+  color: rgba(255, 255, 255, 0.75); padding-left: 0.75em;
+  animation: bootIn 1.4s var(--ease) 0.25s both;
 }
+.boot-sub i { width: 4rem; height: 1px; background: linear-gradient(90deg, transparent, var(--accent)); }
+.boot-sub i:last-child { transform: scaleX(-1); }
 .boot-press {
-  position: absolute; bottom: 14vh; font-size: 1.1rem; letter-spacing: 0.2em; text-transform: uppercase;
-  color: var(--text-2); animation: pulse 2.2s ease-in-out infinite;
+  position: absolute; left: 0; right: 0; bottom: 13vh; width: fit-content; margin: 0 auto;
+  display: flex; align-items: center; gap: 0.9rem; padding: 0.85rem 1.8rem 0.85rem 0.9rem;
+  border-radius: 99px; background: rgba(8, 10, 24, 0.55); backdrop-filter: blur(14px);
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  box-shadow: 0 0 2.4rem rgba(var(--accent-rgb), 0.25), inset 0 0 1.2rem rgba(var(--accent-rgb), 0.12);
+  font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; letter-spacing: 0.22em; text-transform: uppercase;
+  white-space: nowrap; animation: bootIn 1.2s var(--ease) 0.6s both, breathe 2.6s ease-in-out 1.8s infinite;
+}
+.boot-press .glyph { min-width: 2.1rem; height: 2.1rem; padding: 0 0.55rem; font-size: 0.85rem; letter-spacing: 0; text-transform: none; }
+.boot-press .glyph:not(.key) { width: 2.1rem; padding: 0; font-size: 1rem; }
+.boot-foot {
+  position: absolute; left: 0; right: 0; bottom: 4.5vh; text-align: center;
+  color: rgba(255, 255, 255, 0.4); font-size: 0.85rem; letter-spacing: 0.08em;
+  animation: bootIn 1.2s var(--ease) 1s both;
+}
+#boot.warping .boot-title, #boot.warping .boot-press, #boot.warping .boot-foot {
+  transition: opacity 0.4s, transform 0.6s var(--ease); opacity: 0; transform: scale(1.3);
+}
+@keyframes bootIn { from { opacity: 0; transform: translateY(1.4rem); filter: blur(6px); } }
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 1.6rem rgba(var(--accent-rgb), 0.18), inset 0 0 1rem rgba(var(--accent-rgb), 0.1); }
+  50% { box-shadow: 0 0 3.2rem rgba(var(--accent-rgb), 0.45), inset 0 0 1.6rem rgba(var(--accent-rgb), 0.2); }
 }
 @keyframes rise { from { opacity: 0; transform: translateY(1.2rem); } to { opacity: 1; transform: none; } }
 @keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }

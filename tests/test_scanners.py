@@ -118,5 +118,27 @@ class LauncherAndEpicTests(unittest.TestCase):
         self.assertEqual(games[0]["launch"]["argv"], ["prismlauncher", "--launch", "fabric-1.21"])
 
 
+class CustomAndDemoTests(unittest.TestCase):
+    def test_custom_game_conversion(self):
+        game = scanners.custom_to_game({"id": "custom:1", "title": "Doom", "command": "gzdoom", "cover": "https://x/c.jpg", "hero": ""})
+        self.assertEqual(game["launch"], {"type": "cmd", "command": "gzdoom"})
+        self.assertEqual(game["art"]["hero"], ["https://x/c.jpg"])
+
+    def test_demo_library(self):
+        self.assertTrue(all(g["launch"]["type"] == "demo" for g in scanners.demo_games()))
+
+
+class LibraryTests(unittest.TestCase):
+    def test_library_with_custom_game_in_both_modes(self):
+        from gamehub.server import Library
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(Path(tmp) / "state.json")
+            store.update_settings({"sources": {k: False for k in ("steam", "heroic", "epic", "lutris", "mods", "launchers", "desktop", "apps")}})
+            store.add_custom({"title": "Doom", "command": "gzdoom"})
+            for demo in (False, True):
+                titles = [g["title"] for g in Library(store, demo=demo).public_list()]
+                self.assertIn("Doom", titles)
+
+
 if __name__ == "__main__":
     unittest.main()
