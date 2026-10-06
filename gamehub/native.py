@@ -209,6 +209,8 @@ class GameHubWindow:
         self.view.set_background_color(Gdk.RGBA(red=0.02, green=0.027, blue=0.05, alpha=1))
         settings = self.view.get_settings()
         settings.set_enable_developer_extras(debug)
+        if os.environ.get("GAMEHUB_DEBUG"):
+            settings.set_enable_write_console_messages_to_stdout(True)
         settings.set_media_playback_requires_user_gesture(False)
         settings.set_hardware_acceleration_policy(WebKit.HardwareAccelerationPolicy.ALWAYS)
         if hasattr(settings, "set_enable_back_forward_navigation_gestures"):
