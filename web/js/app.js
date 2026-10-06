@@ -16,15 +16,27 @@ const state = {
   running: new Map(),       // id -> { title, started }
   railGames: [],
   railIndex: 0,
-  lib: { filter: "all", sort: "az", query: "" },
+  libs: {
+    library: { filter: "all", sort: "az", query: "" },
+    apps: { filter: "all", sort: "az", query: "" },
+  },
   booted: false,
   launching: false,
 };
 
+// The Games and Apps tabs share one list view; each keeps its own filters.
+Object.defineProperty(state, "lib", { get: () => state.libs[state.view === "apps" ? "apps" : "library"] });
+const isListView = () => state.view === "library" || state.view === "apps";
+const listKind = () => (state.view === "apps" ? "app" : "game");
+const viewEl = (name) => document.getElementById(name === "apps" ? "view-library" : `view-${name}`);
+const isApp = (g) => g?.kind === "app";
+const playLabel = (g) => (isApp(g) ? "Open" : "Play");
+
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const appEl = $("#app");
-const SOURCES = { steam: "Steam", heroic: "Heroic", lutris: "Lutris", desktop: "Desktop", custom: "Custom" };
+const SOURCES = { steam: "Steam", heroic: "Heroic", lutris: "Lutris", desktop: "Desktop", custom: "Custom", app: "App" };
+const APP_CATEGORY_ORDER = ["Games", "Internet", "Media", "Graphics", "Office", "Development", "Utilities", "System", "Other"];
 const SORTS = [
   { id: "az", label: "A–Z" },
   { id: "recent", label: "Recently played" },
@@ -123,6 +135,13 @@ function artHtml(game) {
   </div>`;
 }
 
+function appArtHtml(app) {
+  const h = hash(app.title);
+  return `<div class="tile-art app-art" style="--h1:${h % 360};--h2:${(h + 50) % 360}">
+    <div class="fallback app-fallback"><span class="fb-initials">${escapeHtml(initials(app.title))}</span></div>
+  </div>`;
+}
+
 function hydrateArt(container, game) {
   const art = container.querySelector(".tile-art");
   if (!art || art.dataset.hydrated) return;
@@ -153,7 +172,9 @@ const artObserver = new IntersectionObserver((entries) => {
 }, { rootMargin: "400px" });
 
 const gameById = (id) => state.games.find((g) => g.id === id);
-const visibleGames = () => state.games.filter((g) => state.settings.showHidden || !g.hidden);
+const visibleAll = () => state.games.filter((g) => state.settings.showHidden || !g.hidden);
+const visibleGames = () => visibleAll().filter((g) => !isApp(g));
+const visibleApps = () => visibleAll().filter(isApp);
 
 // ======================================================================== glyphs & hints
 const GLYPHS = {
@@ -185,7 +206,7 @@ function currentHints() {
   const hints = [];
   const game = el?.dataset?.id && gameById(el.dataset.id);
   if (game) {
-    hints.push(["accept", state.running.has(game.id) ? "Running" : "Play"], ["x", "Details"], ["y", game.favorite ? "Unfavorite" : "Favorite"]);
+    hints.push(["accept", state.running.has(game.id) ? "Running" : playLabel(game)], ["x", "Details"], ["y", game.favorite ? "Unfavorite" : "Favorite"]);
   } else if (el?.querySelector?.("input")) {
     hints.push(["accept", "Type"]);
   } else if (el?.hasAttribute?.("data-adjust")) {
@@ -194,7 +215,7 @@ function currentHints() {
     hints.push(["accept", "Select"]);
   }
   if (state.view !== "home") hints.push(["back", "Home"]);
-  if (state.view === "library") hints.push(["select", "Search"], ["lt", "Page"]);
+  if (isListView()) hints.push(["select", "Search"], ["lt", "Page"]);
   hints.push(["start", "Menu"]);
   return hints;
 }
@@ -325,8 +346,9 @@ async function pollStatus() {
     if (changed) {
       for (const [id, info] of before) {
         if (!state.running.has(id)) {
-          const minutes = Math.max(1, Math.round((Date.now() / 1000 - info.started) / 60));
-          toast("Session ended", `${info.title} · ${minutes} min`, { iconName: "clock" });
+          const seconds = Date.now() / 1000 - info.started;
+          if (seconds < 10) continue; // handed off to an already-open window
+          toast("Session ended", `${info.title} · ${Math.max(1, Math.round(seconds / 60))} min`, { iconName: "clock" });
         }
       }
       await reloadState({ keepFocus: true });
@@ -398,35 +420,43 @@ function editField(el) {
 
 // ======================================================================== views
 function showView(name, { focus = true } = {}) {
-  if (state.view !== name && nav.current && $(`#view-${state.view}`).contains(nav.current)) {
+  if (state.view !== name && nav.current && viewEl(state.view).contains(nav.current)) {
     viewFocus[state.view] = nav.current;
   }
   const changed = state.view !== name;
   state.view = name;
-  $$(".view").forEach((v) => (v.hidden = v.id !== `view-${name}`));
+  $$(".view").forEach((v) => (v.hidden = v !== viewEl(name)));
   $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
-  document.body.classList.remove("view-home", "view-library", "view-settings");
+  document.body.classList.remove("view-home", "view-library", "view-apps", "view-settings");
   document.body.classList.add(`view-${name}`);
-  if (name === "library") renderLibrary();
+  if (isListView()) {
+    $("#search").value = state.lib.query;
+    $("#search").placeholder = name === "apps" ? "Search apps" : "Search games";
+    $("#search").setAttribute("aria-label", $("#search").placeholder);
+    if (changed) $("#grid").innerHTML = "";
+    renderLibrary();
+  }
   if (name === "settings") renderSettings();
   if (name === "home") updateRail(false);
   if (focus) {
     const remembered = viewFocus[name];
     if (remembered && remembered.isConnected) nav.focus(remembered, { silent: true });
     else if (name === "home") focusRail(state.railIndex);
-    else nav.focus(nav.candidates($(`#view-${name}`))[0] || null, { silent: true });
+    else if (isListView()) nav.focus($("#grid [data-nav]") || $("#search-box"), { silent: true });
+    else nav.focus(nav.candidates(viewEl(name))[0] || null, { silent: true });
   }
   if (changed) sound.play("tab");
   updateHints();
 }
 const viewFocus = {};
-const VIEW_ORDER = ["home", "library", "settings"];
+const VIEW_ORDER = ["home", "library", "apps", "settings"];
 
 $$(".tab").forEach((tab) => tab.addEventListener("click", () => showView(tab.dataset.tab)));
 
 // ---------------------------------------------------------------- home
 function homeOrder() {
-  return [...visibleGames()].sort((a, b) =>
+  const items = [...visibleGames(), ...visibleApps().filter((a) => a.lastPlayed || a.favorite)];
+  return items.sort((a, b) =>
     (state.running.has(b.id) - state.running.has(a.id)) ||
     (b.lastPlayed - a.lastPlayed) ||
     (b.favorite - a.favorite) ||
@@ -441,7 +471,7 @@ function renderHome({ keepId } = {}) {
 
   const tiles = games.map((g) => `
     <div class="tile" data-nav data-id="${escapeHtml(g.id)}">
-      ${artHtml(g)}
+      ${isApp(g) ? appArtHtml(g) : artHtml(g)}
       ${g.favorite ? `<span class="fav-badge">${icon("star")}</span>` : ""}
       ${state.running.has(g.id) ? `<span class="run-badge">RUNNING</span>` : ""}
       <div class="tile-label">${escapeHtml(g.title)}</div>
@@ -484,7 +514,7 @@ function updateRail(animate = true) {
     const d = j - i;
     t.classList.toggle("current", d === 0);
     t.style.setProperty("--s", d === 0 ? 1.28 : 1);
-    t.style.setProperty("--arc-y", d > 0 ? `${Math.min(d * d * 0.32 + d * 0.5, 7)}rem` : d < 0 ? "1.4rem" : "0rem");
+    t.style.setProperty("--arc-y", d > 0 ? `${Math.min(d * d * 0.22 + d * 0.4, 3.6)}rem` : d < 0 ? "1rem" : "0rem");
     t.style.setProperty("--arc-r", d > 0 ? `${Math.min(d * 1.6, 9)}deg` : "0deg");
     t.style.setProperty("--o", d < -1 ? 0 : d === -1 ? 0.35 : d > 7 ? 0 : 1);
   });
@@ -522,7 +552,7 @@ function updateSpotlight() {
   play.hidden = fav.hidden = info.hidden = false;
   const running = state.running.has(game.id);
   play.classList.toggle("running", running);
-  play.querySelector("span").textContent = running ? "Running" : "Play";
+  play.querySelector("span").textContent = running ? "Running" : playLabel(game);
   fav.classList.toggle("on", game.favorite);
   fav.innerHTML = icon(game.favorite ? "star" : "star-o");
 
@@ -532,12 +562,13 @@ function updateSpotlight() {
     if (url && logo.dataset.token === token) logo.innerHTML = `<img src="${escapeHtml(url)}" alt="${escapeHtml(game.title)}">`;
   });
   meta.innerHTML = `
-    <span class="source-chip src-${game.source}">${SOURCES[game.source] || game.source}</span>
+    <span class="source-chip src-${game.source}">${isApp(game) ? escapeHtml(game.category || "App") : SOURCES[game.source] || game.source}</span>
+    ${isApp(game) && game.description ? `<span class="meta-item">${escapeHtml(game.description)}</span>` : ""}
     ${game.favorite ? `<span class="meta-item">${icon("star")} Favorite</span>` : ""}
     ${running ? `<span class="meta-item" style="color:var(--good)">● Running now</span>` : ""}`;
   cards.innerHTML = `
-    <div class="info-card"><div class="k">Last played</div><div class="v">${formatAgo(game.lastPlayed)}</div></div>
-    <div class="info-card"><div class="k">Play time</div><div class="v">${formatPlaytime(game.playtime)}</div></div>
+    <div class="info-card"><div class="k">${isApp(game) ? "Last opened" : "Last played"}</div><div class="v">${formatAgo(game.lastPlayed)}</div></div>
+    <div class="info-card"><div class="k">${isApp(game) ? "Time used" : "Play time"}</div><div class="v">${formatPlaytime(game.playtime)}</div></div>
     <div class="info-card"><div class="k">Launches</div><div class="v">${game.launches || 0}</div></div>`;
   setBackground(game);
 }
@@ -586,11 +617,14 @@ $("#spot-info").addEventListener("click", () => { const g = currentRailGame(); i
 // ---------------------------------------------------------------- library
 function libraryList() {
   const { filter, sort, query } = state.lib;
+  const kind = listKind();
   let list = state.games.filter((g) => {
+    if ((g.kind || "game") !== kind) return false;
     if (filter === "hidden") return g.hidden;
     if (!state.settings.showHidden && g.hidden) return false;
     if (filter === "favorites") return g.favorite;
     if (filter === "recent") return g.lastPlayed > 0;
+    if (filter.startsWith("cat:")) return g.category === filter.slice(4);
     if (filter in SOURCES) return g.source === filter;
     return true;
   });
@@ -607,14 +641,18 @@ function libraryList() {
 }
 
 function renderChips() {
-  const all = visibleGames();
+  const apps = listKind() === "app";
+  const all = apps ? visibleApps() : visibleGames();
   const chips = [
     ["all", "All", all.length],
     ["favorites", "Favorites", all.filter((g) => g.favorite).length],
-    ["recent", "Recently played", all.filter((g) => g.lastPlayed).length],
-    ...Object.entries(SOURCES).map(([id, label]) => [id, label, all.filter((g) => g.source === id).length]).filter(([, , n]) => n > 0),
+    ["recent", apps ? "Recently used" : "Recently played", all.filter((g) => g.lastPlayed).length],
+    ...(apps
+      ? APP_CATEGORY_ORDER.map((c) => [`cat:${c}`, c, all.filter((g) => g.category === c).length])
+      : Object.entries(SOURCES).filter(([id]) => id !== "app").map(([id, label]) => [id, label, all.filter((g) => g.source === id).length])
+    ).filter(([, , n]) => n > 0),
   ];
-  const hidden = state.games.filter((g) => g.hidden).length;
+  const hidden = state.games.filter((g) => g.hidden && (g.kind || "game") === listKind()).length;
   if (hidden) chips.push(["hidden", "Hidden", hidden]);
   if (!chips.some(([id]) => id === state.lib.filter)) state.lib.filter = "all";
   const focusedFilter = nav.current?.dataset?.filter;
@@ -628,27 +666,33 @@ function renderLibrary() {
   const list = libraryList();
   const grid = $("#grid");
   const focusedId = grid.contains(nav.current) ? nav.current.dataset.id : null;
-  $("#lib-count").textContent = `${list.length} ${list.length === 1 ? "game" : "games"}`;
+  const apps = listKind() === "app";
+  const noun = apps ? "app" : "game";
+  $("#lib-heading").textContent = apps ? "Apps" : "Games";
+  $("#lib-count").textContent = `${list.length} ${noun}${list.length === 1 ? "" : "s"}`;
+  $("#lib-add").hidden = apps;
   $("#sort-label").textContent = SORTS.find((s) => s.id === state.lib.sort).label;
 
   if (!list.length) {
     const searching = !!state.lib.query;
-    grid.innerHTML = `<div class="empty">${icon(searching ? "search" : "gamepad")}
-      <h2>${searching ? "No matches" : state.games.length ? "Nothing here yet" : "Your library is empty"}</h2>
-      <div>${searching ? `Nothing matches “${escapeHtml(state.lib.query)}”.` : state.games.length ? "Try another filter." : "Install games in Steam, Heroic or Lutris, or add one manually."}</div>
+    const any = (apps ? visibleApps() : visibleGames()).length;
+    grid.innerHTML = `<div class="empty">${icon(searching ? "search" : apps ? "apps" : "gamepad")}
+      <h2>${searching ? "No matches" : any ? "Nothing here yet" : apps ? "No apps found" : "Your library is empty"}</h2>
+      <div>${searching ? `Nothing matches “${escapeHtml(state.lib.query)}”.` : any ? "Try another filter." : apps ? "Turn on “Scan apps” in Settings, then rescan." : "Install games in Steam, Heroic or Lutris, or add one manually."}</div>
       <div class="row">
         ${searching ? `<button class="btn btn-ghost" data-nav data-do="clear-search">Clear search</button>` : ""}
         <button class="btn btn-ghost" data-nav data-do="add">${icon("plus")}<span>Add game</span></button>
         <button class="btn btn-ghost" data-nav data-do="rescan">${icon("refresh")}<span>Rescan</span></button>
       </div></div>`;
   } else {
+    grid.classList.toggle("apps", apps);
     grid.innerHTML = list.map((g) => `
-      <div class="card ${g.hidden ? "is-hidden" : ""}" data-nav data-id="${escapeHtml(g.id)}">
-        ${artHtml(g)}
+      <div class="card ${apps ? "app-card" : ""} ${g.hidden ? "is-hidden" : ""}" data-nav data-id="${escapeHtml(g.id)}">
+        ${apps ? appArtHtml(g) : artHtml(g)}
         ${g.favorite ? `<span class="fav-badge">${icon("star")}</span>` : ""}
         ${state.running.has(g.id) ? `<span class="run-badge">RUNNING</span>` : ""}
-        <div class="card-title">${escapeHtml(g.title)}</div>
-        <div class="card-sub">${SOURCES[g.source]}${g.playtime ? ` · ${formatPlaytime(g.playtime)}` : ""}</div>
+        <div class="card-title" title="${escapeHtml(g.title)}">${escapeHtml(g.title)}</div>
+        <div class="card-sub">${apps ? escapeHtml(g.category || "App") : SOURCES[g.source]}${g.playtime ? ` · ${formatPlaytime(g.playtime)}` : ""}</div>
       </div>`).join("");
     $$(".card", grid).forEach((c) => artObserver.observe(c));
   }
@@ -657,7 +701,7 @@ function renderLibrary() {
     const again = grid.querySelector(`[data-id="${CSS.escape(focusedId)}"]`);
     if (again) nav.focus(again, { silent: true, scroll: false });
   }
-  if (nav.current && !nav.current.isConnected && state.view === "library" && !layers.length) {
+  if (nav.current && !nav.current.isConnected && isListView() && !layers.length) {
     nav.focus($("#grid [data-nav]") || $("#search-box"), { silent: true });
   }
 }
@@ -755,18 +799,20 @@ function renderSettings() {
     ["Library", [
       ...Object.entries({ steam: "Steam", heroic: "Heroic (Epic, GOG)", lutris: "Lutris", desktop: "Desktop games (.desktop)" }).map(([k, label]) =>
         settingRow({ id: `src-${k}`, label: `Scan ${label}`, type: "toggle", value: toggleHtml(s.sources[k]), help: `Include games installed through ${label}.` })),
+      settingRow({ id: "src-apps", label: "Show apps", desc: "All programs from your app menu, in the Apps tab", type: "toggle", value: toggleHtml(s.sources.apps), help: "List every program on your PC (browsers, chat, media, the game stores) in the Apps tab." }),
       settingRow({ id: "showHidden", label: "Show hidden games", desc: "Hidden games are always listed under the Hidden filter", type: "toggle", value: toggleHtml(s.showHidden) }),
       settingRow({ id: "rescan", label: "Rescan library", desc: "Look for newly installed or removed games", value: icon("refresh") }),
       settingRow({ id: "add", label: "Add a game", desc: "Anything with a launch command", value: icon("plus") }),
     ]],
     ["System", [
+      settingRow({ id: "hideOnLaunch", label: "Step aside while playing", desc: "Hide GameHub when a game or app starts, and come back when it closes", type: "toggle", value: toggleHtml(s.hideOnLaunch), help: "GameHub hides itself when you start something and returns when it closes. Press Super+O to show or hide GameHub at any time." }),
       settingRow({ id: "fullscreen", label: "Full screen", desc: "Also F11", type: "toggle", value: toggleHtml(isFullscreen()) }),
       settingRow({ id: "quit", label: "Quit GameHub", value: icon("exit") }),
     ]],
   ];
   SETTINGS_HELP.accent = "Pick the accent color used for highlights, glows and the boot screen.";
   $("#settings-list").innerHTML = groups.map(([title, rows]) => `<div class="settings-group">${title}</div>${rows.join("")}`).join("");
-  $("#settings-about").innerHTML = `GameHub ArcStyle ${escapeHtml(state.version)}<br>${state.games.length} games · ${escapeHtml(state.hostname)}${state.demo ? "<br>Demo mode" : ""}`;
+  $("#settings-about").innerHTML = `GameHub ArcStyle ${escapeHtml(state.version)}<br>${visibleGames().length} games · ${visibleApps().length} apps · ${escapeHtml(state.hostname)}${state.demo ? "<br>Demo mode" : ""}`;
   if (focused) {
     const el = $(`#settings-list [data-setting="${focused}"]`) || $(`#settings-list [data-accent="${focused}"]`);
     if (el) nav.focus(el, { silent: true, scroll: false });
@@ -791,7 +837,7 @@ $("#settings-list").addEventListener("click", (e) => {
   if (id === "profileName") { if (e.target.tagName !== "INPUT") editField(row); return; }
   sound.play("toggle");
   switch (id) {
-    case "clock24": case "sounds": case "rumble": case "showHidden":
+    case "clock24": case "sounds": case "rumble": case "showHidden": case "hideOnLaunch":
       return saveSetting(id, !s[id]);
     case "background": return adjustSetting(row, 1);
     case "volume": return adjustSetting(row, s.volume >= 1 ? -1 : 1);
@@ -837,7 +883,11 @@ function renderDetails(game) {
   detailsGame = game;
   const running = state.running.has(game.id);
   firstImage(game.art.hero.length ? game.art.hero : game.art.cover).then((url) => {
-    if (detailsGame === game) $("#details-bg").style.backgroundImage = url ? `url("${url}")` : "none";
+    if (detailsGame !== game) return;
+    const h = hash(game.title) % 360;
+    $("#details-bg").style.backgroundImage = url
+      ? `url("${url}")`
+      : `radial-gradient(60% 70% at 75% 45%, hsl(${h} 70% 40% / 0.45), transparent 70%), radial-gradient(50% 60% at 20% 80%, rgba(var(--accent-rgb), 0.18), transparent 70%)`;
   });
   const logo = $("#details-logo");
   logo.innerHTML = `<div class="spot-title">${escapeHtml(game.title)}</div>`;
@@ -845,24 +895,27 @@ function renderDetails(game) {
     if (url && detailsGame === game) logo.innerHTML = `<img src="${escapeHtml(url)}" alt="${escapeHtml(game.title)}">`;
   });
   $("#details-chips").innerHTML = `
-    <span class="source-chip src-${game.source}">${SOURCES[game.source]}</span>
+    <span class="source-chip src-${game.source}">${isApp(game) ? escapeHtml(game.category || "App") : SOURCES[game.source]}</span>
     ${game.favorite ? `<span class="source-chip" style="--src:#ffd23f">Favorite</span>` : ""}
     ${game.hidden ? `<span class="source-chip" style="--src:#888">Hidden</span>` : ""}
     ${running ? `<span class="source-chip" style="--src:var(--good)">Running</span>` : ""}`;
   $("#details-actions").innerHTML = `
-    <button class="btn btn-primary ${running ? "running" : ""}" data-nav data-do="play">${icon("play")}<span>${running ? "Running" : "Play"}</span></button>
+    <button class="btn btn-primary ${running ? "running" : ""}" data-nav data-do="play">${icon("play")}<span>${running ? "Running" : playLabel(game)}</span></button>
     <button class="btn ${game.favorite ? "btn-icon on" : ""}" data-nav data-do="fav">${icon(game.favorite ? "star" : "star-o")}<span>${game.favorite ? "Favorited" : "Favorite"}</span></button>
     <button class="btn" data-nav data-do="hide">${icon(game.hidden ? "eye" : "eye-off")}<span>${game.hidden ? "Unhide" : "Hide"}</span></button>
     ${game.source === "custom" ? `<button class="btn btn-danger" data-nav data-do="remove">${icon("trash")}<span>Remove</span></button>` : ""}`;
   $("#details-actions .btn-icon.on")?.classList.remove("btn-icon");
   $("#details-stats").innerHTML = `
-    <div class="info-card"><div class="k">Play time</div><div class="v">${formatPlaytime(game.playtime)}</div></div>
-    <div class="info-card"><div class="k">Last played</div><div class="v">${formatAgo(game.lastPlayed)}</div></div>
+    <div class="info-card"><div class="k">${isApp(game) ? "Time used" : "Play time"}</div><div class="v">${formatPlaytime(game.playtime)}</div></div>
+    <div class="info-card"><div class="k">${isApp(game) ? "Last opened" : "Last played"}</div><div class="v">${formatAgo(game.lastPlayed)}</div></div>
     <div class="info-card"><div class="k">Launches</div><div class="v">${game.launches || 0}</div></div>
     ${game.size ? `<div class="info-card"><div class="k">Size on disk</div><div class="v">${formatSize(game.size)}</div></div>` : ""}
     ${game.command ? `<div class="info-card" style="grid-column:1/-1"><div class="k">Command</div><div class="details-cmd">${escapeHtml(game.command)}</div></div>` : ""}`;
+  $("#details-desc").textContent = (isApp(game) && game.description) || "";
+  $("#details-desc").hidden = !(isApp(game) && game.description);
   const cover = $("#details-cover");
-  cover.innerHTML = artHtml(game);
+  cover.classList.toggle("app", isApp(game));
+  cover.innerHTML = isApp(game) ? appArtHtml(game) : artHtml(game);
   hydrateArt(cover, game);
 }
 
@@ -1016,15 +1069,18 @@ async function launchGame(game) {
   state.launching = true;
   const overlay = $("#launching");
   $("#launch-title").textContent = game.title;
+  const app = isApp(game);
+  $("#launch-sub").textContent = app ? "Opening…" : "Starting game…";
+  overlay.classList.toggle("app", app);
   const cover = $("#launch-cover");
-  cover.innerHTML = artHtml(game);
+  cover.innerHTML = app ? appArtHtml(game) : artHtml(game);
   hydrateArt(cover, game);
   firstImage(game.art.hero.length ? game.art.hero : game.art.cover).then((url) => {
     $("#launch-bg").style.backgroundImage = url ? `url("${url}")` : "none";
   });
   overlay.classList.add("show");
-  sound.play("launch");
-  if (state.settings.rumble) input.rumble(0.8, 0.5, 260);
+  sound.play(app ? "open" : "launch");
+  if (state.settings.rumble && !app) input.rumble(0.8, 0.5, 260);
   try {
     await api.launch(game.id);
     game.lastPlayed = Math.floor(Date.now() / 1000);
@@ -1034,16 +1090,18 @@ async function launchGame(game) {
   } catch (err) {
     overlay.classList.remove("show");
     state.launching = false;
-    return toast("Could not start game", err.message, { kind: "error" });
+    return toast(app ? "Could not open app" : "Could not start game", err.message, { kind: "error" });
   }
   setTimeout(() => {
     overlay.classList.remove("show");
     state.launching = false;
+    // Step aside so the game/app is in front; Super+O (or closing it) brings GameHub back.
+    if (state.settings.hideOnLaunch && !state.demo) input.postNative({ type: "hide", reason: "launch" });
     renderHome({ keepId: game.id });
-    if (state.view === "library") renderLibrary();
+    if (isListView()) renderLibrary();
     if (topLayer()?.name === "details") renderDetails(gameById(game.id));
     updateHints();
-  }, 2600);
+  }, app ? 1300 : 2600);
 }
 
 async function toggleFavorite(game) {
@@ -1069,7 +1127,7 @@ async function setHidden(game, hidden) {
 function refreshAfterMeta(game) {
   const focusedId = nav.current?.dataset?.id;
   renderHome({ keepId: state.view === "home" && focusedId ? focusedId : undefined });
-  if (state.view === "library") renderLibrary();
+  if (isListView()) renderLibrary();
   if (state.view === "home" && !layers.length && focusedId) {
     const tile = $(`#rail [data-id="${CSS.escape(focusedId)}"]`);
     if (tile) nav.focus(tile, { silent: true });
@@ -1084,7 +1142,7 @@ async function rescan() {
     const before = state.games.length;
     setGames(res.games);
     const diff = state.games.length - before;
-    toast("Library updated", `${state.games.length} games${diff ? ` (${diff > 0 ? "+" : ""}${diff})` : ""}`, { iconName: "grid" });
+    toast("Library updated", `${visibleGames().length} games · ${visibleApps().length} apps${diff ? ` (${diff > 0 ? "+" : ""}${diff})` : ""}`, { iconName: "grid" });
   } catch (err) {
     toast("Rescan failed", err.message, { kind: "error" });
   }
@@ -1093,7 +1151,7 @@ async function rescan() {
 function setGames(games) {
   state.games = games;
   renderHome();
-  if (state.view === "library") renderLibrary();
+  if (isListView()) renderLibrary();
   if (state.view === "settings") renderSettings();
   nav.ensure();
   updateHints();
@@ -1164,7 +1222,7 @@ function handleAction(action, info = {}) {
 
     case "x": {
       const game = current?.dataset?.id && gameById(current.dataset.id);
-      if (game && !layer) openDetails(game, state.view === "library" ? state.libList : state.railGames);
+      if (game && !layer) openDetails(game, isListView() ? state.libList : state.railGames);
       return true;
     }
 
@@ -1194,14 +1252,14 @@ function handleAction(action, info = {}) {
     case "lt": case "rt": {
       if (layer) return true;
       const dir = action === "lt" ? -1 : 1;
-      if (state.view === "library") pageLibrary(dir);
+      if (isListView()) pageLibrary(dir);
       if (state.view === "home") { focusRail(state.railIndex + dir * 5); sound.play("move"); }
       return true;
     }
 
     case "select":
       if (layer) return true;
-      if (state.view !== "library") showView("library", { focus: false });
+      if (!isListView()) showView("library", { focus: false });
       nav.focus($("#search-box"));
       editField($("#search-box"));
       return true;

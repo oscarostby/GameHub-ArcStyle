@@ -15,6 +15,7 @@
   <!-- Icon sprite -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.2 12 4l9 7.2V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" fill="currentColor"/></symbol>
+    <symbol id="i-apps" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="5.5" cy="5.5" r="2.3"/><circle cx="12" cy="5.5" r="2.3"/><circle cx="18.5" cy="5.5" r="2.3"/><circle cx="5.5" cy="12" r="2.3"/><circle cx="12" cy="12" r="2.3"/><circle cx="18.5" cy="12" r="2.3"/><circle cx="5.5" cy="18.5" r="2.3"/><circle cx="12" cy="18.5" r="2.3"/><circle cx="18.5" cy="18.5" r="2.3"/></g></symbol>
     <symbol id="i-grid" viewBox="0 0 24 24"><path d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z" fill="currentColor"/></symbol>
     <symbol id="i-gear" viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)" fill="currentColor"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.4-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z" fill="currentColor"/></symbol>
@@ -69,7 +70,8 @@
       <nav class="tabs" data-row>
         <span class="tab-glyph" data-glyph="lb"></span>
         <button class="tab" data-nav data-tab="home"><svg><use href="#i-home"/></svg><span>Home</span></button>
-        <button class="tab" data-nav data-tab="library"><svg><use href="#i-grid"/></svg><span>Library</span></button>
+        <button class="tab" data-nav data-tab="library"><svg><use href="#i-gamepad"/></svg><span>Games</span></button>
+        <button class="tab" data-nav data-tab="apps"><svg><use href="#i-apps"/></svg><span>Apps</span></button>
         <button class="tab" data-nav data-tab="settings"><svg><use href="#i-gear"/></svg><span>Settings</span></button>
         <span class="tab-glyph" data-glyph="rb"></span>
       </nav>
@@ -105,7 +107,7 @@
       <section class="view" id="view-library" hidden>
         <div class="lib-head">
           <div class="lib-title">
-            <h1>Library</h1>
+            <h1 id="lib-heading">Games</h1>
             <span class="lib-count" id="lib-count"></span>
           </div>
           <div class="lib-tools" data-row>
@@ -147,6 +149,7 @@
       <div class="details-main">
         <div class="details-logo" id="details-logo"></div>
         <div class="details-chips" id="details-chips"></div>
+        <p class="details-desc" id="details-desc" hidden></p>
         <div class="details-actions" data-row id="details-actions"></div>
         <div class="details-stats" id="details-stats"></div>
       </div>
@@ -201,7 +204,7 @@
     <div class="launch-center">
       <div class="launch-ring"><div class="launch-cover" id="launch-cover"></div></div>
       <div class="launch-title" id="launch-title"></div>
-      <div class="launch-sub">Starting game…</div>
+      <div class="launch-sub" id="launch-sub">Starting game…</div>
     </div>
   </div>
 

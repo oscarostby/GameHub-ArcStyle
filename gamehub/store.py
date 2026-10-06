@@ -23,7 +23,8 @@ DEFAULT_SETTINGS = {
     "clock24": True,
     "showHidden": False,
     "profileName": os.environ.get("USER", "Player").capitalize(),
-    "sources": {"steam": True, "heroic": True, "lutris": True, "desktop": True},
+    "hideOnLaunch": True,
+    "sources": {"steam": True, "heroic": True, "lutris": True, "desktop": True, "apps": True},
 }
 
 

@@ -107,7 +107,8 @@ def run_native(httpd, args) -> int:
     signal.signal(signal.SIGTERM, lambda *_: native.request_quit())
     signal.signal(signal.SIGINT, lambda *_: native.request_quit())
     try:
-        return native.run(httpd.gamehub_url, fullscreen=not args.windowed, debug=args.debug, on_quit=shutdown)
+        return native.run(httpd.gamehub_url, fullscreen=not args.windowed, debug=args.debug, on_quit=shutdown,
+                          running_games=httpd.gamehub_app.launcher.running_games)
     finally:
         httpd.server_close()
 

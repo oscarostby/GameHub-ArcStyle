@@ -33,7 +33,12 @@ class Library:
         self.rescan()
 
     def rescan(self):
-        found = scanners.demo_games() if self.demo else scanners.scan_all(self.store.settings()["sources"])
+        sources = self.store.settings()["sources"]
+        if self.demo:
+            # Demo games, plus the real apps on this PC so the Apps tab can be tried too.
+            found = scanners.demo_games() + (scanners.scan_apps() if sources.get("apps", True) else [])
+        else:
+            found = scanners.scan_all(sources)
         found += [scanners.custom_to_game(c) for c in self.store.custom_games()]
         games, art = {}, {}
         for game in found:
@@ -76,6 +81,9 @@ class Library:
                 "launches": meta.get("launches", 0),
                 "size": g.get("size", 0),
                 "command": g.get("command"),
+                "kind": "app" if g["source"] == "app" else "game",
+                "category": g.get("category"),
+                "description": g.get("description"),
             })
         out.sort(key=lambda g: g["title"].lower())
         return out

@@ -9,9 +9,10 @@ import time
 from pathlib import Path
 
 
-def _spawn(argv: list[str]) -> subprocess.Popen:
+def _spawn(argv: list[str], cwd: str | None = None) -> subprocess.Popen:
     return subprocess.Popen(
         argv,
+        cwd=cwd if cwd and os.path.isdir(os.path.expanduser(cwd)) else None,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -67,10 +68,13 @@ class Launcher:
             _open_uri(launch["uri"])
         elif kind == "desktop":
             gio = shutil.which("gio")
-            if gio:
-                proc = _spawn([gio, "launch", launch["path"]])
+            if launch.get("argv") and not launch.get("terminal") and shutil.which(launch["argv"][0]):
+                # Start it ourselves so we can tell when it closes.
+                proc = _spawn(launch["argv"], launch.get("cwd"))
+            elif gio:
+                _spawn([gio, "launch", launch["path"]])
             else:
-                proc = _spawn(launch["argv"])
+                raise RuntimeError("Cannot start this program")
         elif kind == "cmd":
             argv = launch.get("argv") or shlex.split(launch["command"])
             if not argv:
@@ -130,13 +134,16 @@ class Launcher:
             with self.lock:
                 self.running.pop(game_id, None)
             tracked = info["proc"] is not None or info["seen"]
-            if tracked:
+            # Programs that exit within seconds usually handed off to an already-running copy.
+            if tracked and now - info["started"] > 5:
                 self.store.add_playtime(game_id, now - info["started"])
 
     def running_games(self) -> list[dict]:
         with self.lock:
             return [
-                {"id": gid, "title": info["title"], "started": int(info["started"])}
+                {"id": gid, "title": info["title"], "started": int(info["started"]),
+                 # Tracked = we can tell when it closes (own process or Steam game id).
+                 "tracked": info["proc"] is not None or bool(info["steamAppId"]) or info["demo"]}
                 for gid, info in self.running.items()
             ]
 

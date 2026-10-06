@@ -1,6 +1,6 @@
 # GameHub ArcStyle
 
-A console-style game launcher app for Linux (Arch and Ubuntu), similar to Steam Big Picture but for *every* game on your PC. It collects Steam, Epic, GOG, Lutris and desktop games in one full-screen hub that you can drive with a controller, a keyboard or a mouse.
+A console-style launcher app for Linux (Arch and Ubuntu), similar to Steam Big Picture but for *everything* on your PC. It puts your Steam, Epic, GOG, Lutris and desktop games, plus every other program (browsers, chat, media, the game stores), in one full-screen hub that you can drive with a controller, a keyboard or a mouse.
 
 GameHub runs as its own desktop app: a native GTK 4 window with the interface rendered by WebKitGTK (the same idea as Big Picture, which draws its UI with web tech internally). Controllers are read natively through libmanette, so no browser is involved.
 
@@ -14,6 +14,8 @@ The home screen puts your games on a curved **arc rail**. The selected game's ar
   - **Lutris**: installed games, with cover art and banners.
   - **Desktop games**: any `.desktop` entry in the *Game* category, including Flatpaks.
   - **Custom games**: add anything that starts with a command, such as emulators, AppImages, scripts or itch.io games.
+- **Apps tab**: every other program in your app menu, with its icon, grouped into Internet, Media, Graphics, Office, Development, Utilities and System. Programs you use show up on the home rail next to your games.
+- **Steps aside while you play**: GameHub hides when a game or app starts and comes back by itself when it closes. You can turn this off in Settings.
 - **Controller first**
   - Works with Xbox, PlayStation and Nintendo-style controllers.
   - Button hints switch automatically (A/B/X/Y, ✕/○/□/△, or keyboard keys).
@@ -43,10 +45,11 @@ The home screen puts your games on a curved **arc rail**. The selected game's ar
   - Background: game artwork, animated aurora, or solid.
   - 12/24-hour clock and profile name.
   - Interface sounds and volume, and controller vibration.
-  - Turn each store scanner on or off, and show or hide hidden games.
+  - Turn each store scanner and the Apps tab on or off, and show or hide hidden games.
+  - Step aside while playing.
 - **Top bar status**: clock, network, battery (on laptops and handhelds) and controller indicator.
 - **Synthesized UI sounds**, so no audio files are needed.
-- **Native desktop app**: full screen over everything, **Super+O** (Windows key + O) to open it or jump back to it, an app-menu entry and icon, F11 to toggle full screen and Ctrl+Q to quit. Only one copy ever runs. Packages are provided for Arch (PKGBUILD) and Ubuntu (.deb).
+- **Native desktop app**: full screen over everything, **Super+O** (Windows key + O) to open and close it, an app-menu entry and icon, F11 to toggle full screen and Ctrl+Q to quit. Only one copy ever runs. Packages are provided for Arch (PKGBUILD) and Ubuntu (.deb).
 
 ## Install
 
@@ -60,7 +63,7 @@ cd GameHub-ArcStyle
 ./install.sh --uninstall
 ```
 
-Then press **Super+O** (Windows key + O), open **GameHub ArcStyle** from your app menu, or run `gamehub-arcstyle`. It opens full screen over everything. If it's already running, Super+O brings it straight back to the front.
+Then press **Super+O** (Windows key + O), open **GameHub ArcStyle** from your app menu, or run `gamehub-arcstyle`. It opens full screen over everything. Press Super+O again to close it; it keeps running in the background, so it comes back instantly next time. Ctrl+Q quits it completely.
 
 ### As a system package
 

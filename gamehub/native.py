@@ -28,7 +28,8 @@ except (ValueError, ImportError):
 
 from . import __version__  # noqa: E402
 
-APP_ID = "io.github.oscarostby.GameHubArcStyle"
+# GAMEHUB_APP_ID lets a development copy run next to the installed one.
+APP_ID = os.environ.get("GAMEHUB_APP_ID", "io.github.oscarostby.GameHubArcStyle")
 ICON_NAME = "gamehub-arcstyle"
 
 # Linux input codes that libmanette reports for standard controller buttons.
@@ -135,6 +136,11 @@ class Controllers:
         self.emit(action, self._family(device), True)
         return True
 
+    def release_all(self):
+        for action in list(self.held):
+            self._release(action)
+        self.axis_state.clear()
+
     def _release(self, action):
         timer = self.held.pop(action, 0)
         if timer:
@@ -187,8 +193,10 @@ class Controllers:
 
 
 class GameHubWindow:
-    def __init__(self, application, url, fullscreen, debug, quit_cb):
+    def __init__(self, application, url, fullscreen, debug, quit_cb, running_games):
         self.quit_cb = quit_cb
+        self.running_games = running_games
+        self.watch_id = 0
         self.window = Gtk.ApplicationWindow(application=application, title="GameHub ArcStyle")
         self.window.set_icon_name(ICON_NAME)
         self.window.set_default_size(1600, 900)
@@ -223,6 +231,8 @@ class GameHubWindow:
         manager.register_script_message_handler("gamehub", None)
         manager.connect("script-message-received::gamehub", self._on_message)
 
+        self.window.set_hide_on_close(False)
+        application.hold()  # stay alive while hidden (Super+O brings it back)
         self.window.set_child(self.view)
         self.window.connect("notify::is-active", self._on_active)
         self.window.connect("close-request", lambda *_: (self.quit_cb(), False)[1])
@@ -232,6 +242,7 @@ class GameHubWindow:
         keys.connect("key-pressed", self._on_key)
         self.window.add_controller(keys)
 
+        self.was_fullscreen = fullscreen
         self.view.load_uri(url)
         if fullscreen:
             self.window.fullscreen()
@@ -262,8 +273,54 @@ class GameHubWindow:
             self.controllers.rumble(message.get("strong", 0.8), message.get("weak", 0.5), message.get("ms", 260))
         elif kind == "quit":
             self.quit_cb()
+        elif kind == "hide":
+            self.hide()
+            if message.get("reason") == "launch":
+                self._watch_session()
+        elif kind == "show":
+            self.show()
         elif kind == "ready" and self.controllers:
             self._send_connection(self.controllers.connected, ", ".join(d.get_name() or "" for d in self.controllers.devices))
+
+    def hide(self):
+        self.was_fullscreen = self.window.is_fullscreen()
+        if self.controllers:
+            self.controllers.release_all()
+        self.window.set_visible(False)
+        self._js("window.gamehubNative && window.gamehubNative.visibility(false)")
+
+    def _watch_session(self):
+        """Come back once the game/app that was just started closes again."""
+        if self.watch_id:
+            GLib.source_remove(self.watch_id)
+        state = {"seen": False, "ticks": 0}
+
+        def tick():
+            state["ticks"] += 1
+            if self.window.get_visible():
+                self.watch_id = 0
+                return False
+            tracked = [g for g in self.running_games() if g.get("tracked")]
+            if tracked:
+                state["seen"] = True
+            elif state["seen"]:
+                self.watch_id = 0
+                self.show()
+                return False
+            elif state["ticks"] > 60:  # nothing trackable started within ~2 minutes
+                self.watch_id = 0
+                return False
+            return True
+
+        self.watch_id = GLib.timeout_add_seconds(2, tick)
+
+    def show(self):
+        if self.was_fullscreen:
+            self.window.fullscreen()
+        self.window.set_visible(True)
+        self.window.present()
+        self.view.grab_focus()
+        self._js("window.gamehubNative && window.gamehubNative.visibility(true)")
 
     def toggle_fullscreen(self):
         if self.window.is_fullscreen():
@@ -325,7 +382,7 @@ def activate_existing() -> bool:
     return False
 
 
-def run(url: str, fullscreen: bool, debug: bool, on_quit) -> int:
+def run(url: str, fullscreen: bool, debug: bool, on_quit, running_games=lambda: []) -> int:
     """Run the native window until it is closed. Returns an exit code."""
     global _quit_hook
     application = _get_application()
@@ -338,15 +395,17 @@ def run(url: str, fullscreen: bool, debug: bool, on_quit) -> int:
     def activate(app):
         existing = getattr(app, "gamehub_window", None)
         if existing:
-            # Launched again (e.g. Super+O): jump back to the front, full screen.
-            if fullscreen:
-                existing.window.fullscreen()
-            existing.window.present()
-            existing.view.grab_focus()
+            # Launched again (Super+O): hide if it's in front, otherwise bring it back.
+            if existing.window.get_visible() and existing.window.is_active():
+                existing.hide()
+            else:
+                existing.show()
+            if os.environ.get("GAMEHUB_DEBUG"):
+                print(f"[gamehub] activated again -> {'shown' if existing.window.get_visible() else 'hidden'}")
         elif WebKit is None:
             show_missing_deps(app)
         else:
-            app.gamehub_window = GameHubWindow(app, url, fullscreen, debug, quit_all)
+            app.gamehub_window = GameHubWindow(app, url, fullscreen, debug, quit_all, running_games)
 
     _quit_hook = quit_all
     application.connect("activate", activate)

@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import sqlite3
 from pathlib import Path
 
@@ -272,43 +273,85 @@ def _xdg_app_dirs() -> list:
     return unique
 
 
-ICON_SIZES = ["512x512", "256x256", "scalable", "192x192", "128x128", "96x96", "64x64", "48x48"]
+ICON_EXTS = (".svg", ".png", ".xpm")
+ICON_THEMES = ["hicolor", "breeze", "Papirus", "Adwaita", "breeze-dark", "AdwaitaLegacy"]
+
+
+def _icon_size_score(path: str) -> int:
+    if "scalable" in path or path.endswith(".svg"):
+        return 1000
+    m = re.search(r"/(\d+)(?:x\d+)?(?:@\d+x)?/", path)
+    return int(m.group(1)) if m else 0
+
+
+class IconIndex:
+    """Maps icon names to the best (largest) app icon file across icon themes."""
+
+    def __init__(self):
+        self.best: dict[str, tuple[int, int, str]] = {}  # name -> (theme rank, -size, path)
+        bases = [HOME / ".local/share/icons", HOME / ".icons", Path("/usr/share/icons"),
+                 Path("/var/lib/flatpak/exports/share/icons"), HOME / ".local/share/flatpak/exports/share/icons"]
+        for base in bases:
+            for rank, theme in enumerate(ICON_THEMES):
+                root = base / theme
+                if not root.is_dir():
+                    continue
+                for dirpath, _dirs, files in os.walk(root):
+                    if "/apps" not in dirpath and not dirpath.endswith("apps"):
+                        continue
+                    for name in files:
+                        stem, ext = os.path.splitext(name)
+                        if ext not in ICON_EXTS:
+                            continue
+                        full = os.path.join(dirpath, name)
+                        key = (rank, -_icon_size_score(full), full)
+                        if stem not in self.best or key < self.best[stem]:
+                            self.best[stem] = key
+
+    def lookup(self, name: str) -> list:
+        if not name:
+            return []
+        if name.startswith("/"):
+            return [name] if Path(name).is_file() else []
+        name = re.sub(r"\.(png|svg|xpm)$", "", name)
+        found = [self.best[name][2]] if name in self.best else []
+        for ext in ICON_EXTS:
+            pixmap = Path("/usr/share/pixmaps") / f"{name}{ext}"
+            if pixmap.is_file():
+                found.append(str(pixmap))
+        return found[:2]
+
+
+_icon_index = None
 
 
 def resolve_icon(name: str) -> list:
-    if not name:
-        return []
-    if name.startswith("/"):
-        return [name] if Path(name).is_file() else []
-    bases = [HOME / ".local/share/icons", Path("/usr/share/icons"), Path("/var/lib/flatpak/exports/share/icons"),
-             HOME / ".local/share/flatpak/exports/share/icons"]
-    found = []
-    for base in bases:
-        for size in ICON_SIZES:
-            for ext in ("png", "svg"):
-                candidate = base / "hicolor" / size / "apps" / f"{name}.{ext}"
-                if candidate.is_file():
-                    found.append(str(candidate))
-        if found:
-            break
-    for ext in ("png", "svg", "xpm"):
-        pixmap = Path("/usr/share/pixmaps") / f"{name}.{ext}"
-        if pixmap.is_file():
-            found.append(str(pixmap))
-    return found[:2]
+    global _icon_index
+    if _icon_index is None:
+        _icon_index = IconIndex()
+    return _icon_index.lookup(name)
+
+
+def reset_icon_index():
+    global _icon_index
+    _icon_index = None
 
 
 LAUNCHER_APPS = re.compile(r"steam|lutris|heroic|gamehub|bottles|itch|minigalaxy", re.IGNORECASE)
+FIELD_CODE = re.compile(r"%[fFuUdDnNickvm]")
 
 
-def scan_desktop() -> list:
-    games = {}
+def _desktop_entries():
+    """Yield (path, entry) for every visible application .desktop file."""
+    desktops = set(filter(None, os.environ.get("XDG_CURRENT_DESKTOP", "").split(":")))
+    seen = set()
     for directory in _xdg_app_dirs():
         if not directory.is_dir():
             continue
-        for path in directory.glob("*.desktop"):
-            if path.name in games:
+        for path in sorted(directory.glob("*.desktop")):
+            if path.name in seen:
                 continue
+            seen.add(path.name)  # earlier directories override later ones
             parser = configparser.ConfigParser(interpolation=None, strict=False)
             parser.optionxform = str
             try:
@@ -318,30 +361,92 @@ def scan_desktop() -> list:
             if "Desktop Entry" not in parser:
                 continue
             entry = parser["Desktop Entry"]
-            categories = entry.get("Categories", "").split(";")
-            if "Game" not in categories or entry.get("Type", "Application") != "Application":
+            if entry.get("Type", "Application") != "Application" or not entry.get("Exec"):
                 continue
             if entry.get("NoDisplay", "false").lower() == "true" or entry.get("Hidden", "false").lower() == "true":
                 continue
-            exec_line = entry.get("Exec", "")
-            # Games owned by Steam/Lutris/Heroic are picked up by their own scanners.
-            if re.search(r"steam://|lutris:|heroic://", exec_line):
+            only = set(filter(None, entry.get("OnlyShowIn", "").split(";")))
+            never = set(filter(None, entry.get("NotShowIn", "").split(";")))
+            if (only and not only & desktops) or (never & desktops):
                 continue
-            if LAUNCHER_APPS.search(path.stem):
-                continue  # the store apps themselves are not games
-            try:
-                argv = [a for a in shlex.split(exec_line) if not re.fullmatch(r"%[fFuUdDnNickvm]", a)]
-            except ValueError:
-                argv = []
-            icons = resolve_icon(entry.get("Icon", ""))
-            games[path.name] = {
-                "id": f"desktop:{path.stem}",
-                "title": entry.get("Name", path.stem),
-                "source": "desktop",
-                "launch": {"type": "desktop", "path": str(path), "argv": argv},
-                "art": {"cover": [], "hero": [], "logo": [], "icon": icons},
-            }
-    return list(games.values())
+            try_exec = entry.get("TryExec")
+            if try_exec and not (shutil.which(try_exec) or Path(try_exec).is_file()):
+                continue
+            yield path, entry
+
+
+def _desktop_launch(path, entry) -> dict:
+    try:
+        argv = [a for a in shlex.split(entry.get("Exec", "")) if not FIELD_CODE.fullmatch(a)]
+    except ValueError:
+        argv = []
+    return {
+        "type": "desktop",
+        "path": str(path),
+        "argv": argv,
+        "cwd": entry.get("Path") or None,
+        "terminal": entry.get("Terminal", "false").lower() == "true",
+    }
+
+
+def scan_desktop() -> list:
+    games = []
+    for path, entry in _desktop_entries():
+        if "Game" not in entry.get("Categories", "").split(";"):
+            continue
+        # Games owned by Steam/Lutris/Heroic are picked up by their own scanners.
+        if re.search(r"steam://|lutris:|heroic://", entry.get("Exec", "")) or LAUNCHER_APPS.search(path.stem):
+            continue
+        games.append({
+            "id": f"desktop:{path.stem}",
+            "title": entry.get("Name", path.stem),
+            "source": "desktop",
+            "launch": _desktop_launch(path, entry),
+            "art": {"cover": [], "hero": [], "logo": [], "icon": resolve_icon(entry.get("Icon", ""))},
+        })
+    return games
+
+
+APP_CATEGORIES = [
+    ("Internet", {"Network", "WebBrowser", "Email", "Chat", "InstantMessaging", "IRCClient", "FileTransfer", "P2P"}),
+    ("Media", {"AudioVideo", "Audio", "Video", "Music", "Player", "Recorder", "TV"}),
+    ("Graphics", {"Graphics", "Photography", "2DGraphics", "3DGraphics", "RasterGraphics", "VectorGraphics", "Scanning"}),
+    ("Office", {"Office", "WordProcessor", "Spreadsheet", "Presentation", "Calendar", "ContactManagement", "Finance", "Viewer"}),
+    ("Development", {"Development", "IDE", "TextEditor", "Debugger", "WebDevelopment"}),
+    ("Games", {"Game"}),
+    ("System", {"System", "Settings", "Monitor", "TerminalEmulator", "FileManager", "PackageManager", "Filesystem", "Security", "HardwareSettings", "DesktopSettings"}),
+    ("Utilities", {"Utility", "Accessories", "Archiving", "Compression", "Calculator", "Clock", "Education", "Science"}),
+]
+
+
+def _app_category(categories: list) -> str:
+    cats = set(categories)
+    for name, members in APP_CATEGORIES:
+        if cats & members:
+            return name
+    return "Other"
+
+
+def scan_apps() -> list:
+    """Every other program in the app menu (browsers, chat, media, the game stores…)."""
+    apps = []
+    for path, entry in _desktop_entries():
+        categories = entry.get("Categories", "").split(";")
+        is_store = bool(LAUNCHER_APPS.search(path.stem)) and "gamehub" not in path.stem.lower()
+        if "gamehub" in path.stem.lower() or ("Game" in categories and not is_store):
+            continue  # games are listed with the games
+        if path.stem.startswith("kcm_") or "X-KDE-settings-module" in entry.get("Categories", ""):
+            continue  # individual KDE settings pages
+        apps.append({
+            "id": f"app:{path.stem}",
+            "title": entry.get("Name", path.stem),
+            "source": "app",
+            "category": "Games" if is_store else _app_category(categories),
+            "description": entry.get("Comment", "") or entry.get("GenericName", ""),
+            "launch": _desktop_launch(path, entry),
+            "art": {"cover": [], "hero": [], "logo": [], "icon": resolve_icon(entry.get("Icon", ""))},
+        })
+    return apps
 
 
 # ---------------------------------------------------------------------------
@@ -398,10 +503,12 @@ SCANNERS = {
     "heroic": scan_heroic,
     "lutris": scan_lutris,
     "desktop": scan_desktop,
+    "apps": scan_apps,
 }
 
 
 def scan_all(sources: dict) -> list:
+    reset_icon_index()  # pick up newly installed icon themes and apps
     games = []
     for name, scanner in SCANNERS.items():
         if not sources.get(name, True):
