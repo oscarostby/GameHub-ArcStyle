@@ -760,7 +760,7 @@ function renderSettings() {
       settingRow({ id: "add", label: "Add a game", desc: "Anything with a launch command", value: icon("plus") }),
     ]],
     ["System", [
-      settingRow({ id: "fullscreen", label: "Full screen", type: "toggle", value: toggleHtml(!!document.fullscreenElement) }),
+      settingRow({ id: "fullscreen", label: "Full screen", desc: "Also F11", type: "toggle", value: toggleHtml(isFullscreen()) }),
       settingRow({ id: "quit", label: "Quit GameHub", value: icon("exit") }),
     ]],
   ];
@@ -948,12 +948,22 @@ $("#avatar-btn").addEventListener("click", openPower);
 
 async function quitApp() {
   if (!(await confirmDialog("Quit GameHub?", "Your games keep running. Start GameHub again from your app menu.", "Quit"))) return;
+  if (input.postNative({ type: "quit" })) return;
   try { await api.power("quit"); } catch { /* server is going away */ }
   document.body.innerHTML = `<div style="display:grid;place-items:center;height:100vh;color:#889;font-family:sans-serif">GameHub has closed. You can close this window.</div>`;
   setTimeout(() => window.close(), 300);
 }
 
+let resizeTimer = 0;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => state.view === "settings" && !layers.length && renderSettings(), 200);
+});
+
+const isFullscreen = () => !!document.fullscreenElement || (window.innerWidth >= screen.width && window.innerHeight >= screen.height);
+
 function toggleFullscreen() {
+  if (input.postNative({ type: "fullscreen" })) return;
   const p = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
   Promise.resolve(p).catch(() => toast("Full screen unavailable", "Press F11 to toggle full screen", { kind: "error" }))
     .finally(() => setTimeout(() => state.view === "settings" && renderSettings(), 300));
@@ -1207,8 +1217,8 @@ input.on((action, info) => {
 input.onDevice = () => refreshGlyphs();
 input.onConnection = (connected, pad) => {
   const name = pad.id.replace(/\(.*?\)/g, "").replace(/\s+/g, " ").trim() || "Controller";
-  $("#pad-status").classList.toggle("on", input.pads.size > 0);
-  if (state.booted) {
+  $("#pad-status").classList.toggle("on", input.controllerCount > 0);
+  if (state.booted && pad.id) {
     toast(connected ? "Controller connected" : "Controller disconnected", name, { iconName: "gamepad", kind: connected ? "info" : "error" });
   }
 };

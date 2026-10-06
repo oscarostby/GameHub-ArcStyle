@@ -66,24 +66,8 @@ def open_window(url: str, windowed: bool) -> subprocess.Popen | None:
     return None
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(prog="gamehub", description="Console-style game launcher")
-    parser.add_argument("--port", type=int, default=47800, help="port to listen on (0 = random)")
-    parser.add_argument("--no-browser", action="store_true", help="only start the server")
-    parser.add_argument("--windowed", action="store_true", help="do not start in full screen / kiosk mode")
-    parser.add_argument("--demo", action="store_true", help="show a demo library instead of scanning")
-    parser.add_argument("--version", action="version", version=f"GameHub ArcStyle {__version__}")
-    args = parser.parse_args(argv)
-
-    app = App(Store(), demo=args.demo)
-    try:
-        httpd = serve(app, args.port)
-    except OSError:
-        httpd = serve(app, 0)  # preferred port busy: pick a free one
-    url = f"http://127.0.0.1:{httpd.server_address[1]}/"
-    print(f"[gamehub] GameHub ArcStyle {__version__} running at {url}")
-    print(f"[gamehub] {len(app.library.games)} games in library")
-
+def run_browser(httpd, args) -> int:
+    """Fallback: show the UI in a chrome-less browser window."""
     browser = None
 
     def quit_app(*_):
@@ -91,18 +75,16 @@ def main(argv=None):
             browser.terminate()
         threading.Thread(target=httpd.shutdown, daemon=True).start()
 
-    app.on_quit = quit_app
+    httpd.gamehub_app.on_quit = quit_app
     signal.signal(signal.SIGTERM, quit_app)
-
     if not args.no_browser:
-        browser = open_window(url, args.windowed)
+        browser = open_window(httpd.gamehub_url, args.windowed)
         if browser:
             def watch_browser():
                 browser.wait()
                 print("[gamehub] window closed, shutting down")
                 threading.Thread(target=httpd.shutdown, daemon=True).start()
             threading.Thread(target=watch_browser, daemon=True).start()
-
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -110,6 +92,61 @@ def main(argv=None):
     finally:
         httpd.server_close()
     return 0
+
+
+def run_native(httpd, args) -> int:
+    """Default: GameHub's own GTK window with an embedded WebKit view."""
+    from . import native
+
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+    def shutdown():
+        threading.Thread(target=httpd.shutdown, daemon=True).start()
+
+    httpd.gamehub_app.on_quit = native.request_quit
+    signal.signal(signal.SIGTERM, lambda *_: native.request_quit())
+    signal.signal(signal.SIGINT, lambda *_: native.request_quit())
+    try:
+        return native.run(httpd.gamehub_url, fullscreen=not args.windowed, debug=args.debug, on_quit=shutdown)
+    finally:
+        httpd.server_close()
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="gamehub", description="Console-style game launcher")
+    parser.add_argument("--windowed", action="store_true", help="start in a window instead of full screen")
+    parser.add_argument("--demo", action="store_true", help="show a demo library instead of scanning")
+    parser.add_argument("--browser", action="store_true", help="show the UI in a browser window instead of the native app")
+    parser.add_argument("--no-browser", action="store_true", help="only start the server (implies --browser)")
+    parser.add_argument("--port", type=int, default=47800, help="port to listen on (0 = random)")
+    parser.add_argument("--debug", action="store_true", help="enable the web inspector (right click)")
+    parser.add_argument("--version", action="version", version=f"GameHub ArcStyle {__version__}")
+    args = parser.parse_args(argv)
+    sys.stdout.reconfigure(line_buffering=True)
+
+    use_browser = args.browser or args.no_browser
+    if not use_browser:
+        try:
+            from . import native
+        except (ImportError, ValueError):
+            print("[gamehub] PyGObject/GTK 4 is missing. Install it (Arch: python-gobject gtk4, Ubuntu: python3-gi gir1.2-gtk-4.0),")
+            print("[gamehub] or run with --browser to use a browser window instead.")
+            return 1
+        if native.activate_existing():
+            print("[gamehub] already running - brought it to the front")
+            return 0
+
+    app = App(Store(), demo=args.demo)
+    try:
+        httpd = serve(app, args.port)
+    except OSError:
+        httpd = serve(app, 0)  # preferred port busy: pick a free one
+    httpd.gamehub_app = app
+    httpd.gamehub_url = f"http://127.0.0.1:{httpd.server_address[1]}/"
+    print(f"[gamehub] GameHub ArcStyle {__version__} running at {httpd.gamehub_url}")
+    print(f"[gamehub] {len(app.library.games)} games in library")
+
+    return run_browser(httpd, args) if use_browser else run_native(httpd, args)
 
 
 if __name__ == "__main__":

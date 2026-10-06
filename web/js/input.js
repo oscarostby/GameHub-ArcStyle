@@ -51,7 +51,32 @@ class Input {
     });
     // Ignore buttons that are already held when focus comes back (e.g. after quitting a game).
     window.addEventListener("focus", () => { this.suppressUntilRelease = true; });
-    requestAnimationFrame(() => this.#poll());
+
+    // In the desktop app, controllers are read natively and forwarded here.
+    this.native = window.__GAMEHUB_NATIVE__ || null;
+    window.gamehubNative = {
+      action: (action, family, repeat) => {
+        this.#setDevice("gamepad", family);
+        this.#emit(action, { device: "gamepad", repeat });
+      },
+      connection: (connected, name, count) => {
+        this.nativeCount = count;
+        this.onConnection?.(connected, { id: name || "Controller" });
+      },
+    };
+    if (!this.native?.gamepad) requestAnimationFrame(() => this.#poll());
+    this.postNative({ type: "ready" });
+  }
+
+  get controllerCount() {
+    return this.native?.gamepad ? this.nativeCount || 0 : this.pads.size;
+  }
+
+  postNative(message) {
+    const handler = window.webkit?.messageHandlers?.gamehub;
+    if (!handler) return false;
+    handler.postMessage(JSON.stringify(message));
+    return true;
   }
 
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
@@ -156,6 +181,7 @@ class Input {
   }
 
   rumble(strong = 0.6, weak = 0.4, duration = 140) {
+    if (this.native?.gamepad) return this.postNative({ type: "rumble", strong, weak, ms: duration });
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const pad of pads) {
       const actuator = pad?.vibrationActuator;
